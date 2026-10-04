@@ -1,0 +1,8 @@
+# 依赖与构建产物
+node_modules/
+lib/
+
+# 本地杂项
+.DS_Store
+*.log
+*.tsbuildinfo

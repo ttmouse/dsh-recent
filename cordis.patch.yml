@@ -1,0 +1,11 @@
+# dsh-recent bundle patch
+
+# Applied over the selected DSH profile when this package is listed in
+# `dsh.profile.bundles`. The row id is deployment-local; the package name must
+# match package.json. This host row makes the browser plugin visible to the web
+# shell: the node half registers the client bundle with the plugin registry,
+# which then serves /plugins/recent/client.js.
+
+- insert:
+    - id: dsh-recent
+      name: dsh-recent
