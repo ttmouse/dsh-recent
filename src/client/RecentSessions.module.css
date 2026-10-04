@@ -1,130 +1,306 @@
 /* The 最近 section plus the fold row both lists share. Metrics are copied from
    the shell's own sidebar (section header 36px / 14px tertiary; session rows
-   34px / 0 8px; overflow row 28px / 0 12px 0 28px) so the workspace list above
-   and the recent list below read as one column. Colors come from the theme's
-   semantic aliases only, so light/dark and every brand theme follow the shell. */
+   32px / 0 8px; fold row 28px / 6px 12px 0 6px at 14px) so the workspace list above
+   and the recent list below read as one column. Row colors come from the
+   theme's semantic aliases; the hover card's are component constants — its
+   surface is fixed dark in both themes. */
 
 .section {
-  /* The foot area is a flex column sized by content; the section is its single
-     wide occupant and stays at its natural height, so the section hangs right
-     below the workspace list instead of reserving a fixed bottom block. */
-  flex: none;
+  /* The column's last content: the section keeps its natural height and never
+     grows, so it follows the last workspace row and the column's own scrolling
+     reaches it — no fixed bottom block, and no inner scroll area of its own. It
+     must stay shrinkable, though: a row wider than the column would otherwise
+     hold its max-content width and clip every title at the sidebar edge. */
   min-width: 0;
   display: flex;
   flex-direction: column;
-  padding: 4px 0 2px;
-  border-top: 1px solid var(--dsw-alias-border-l2);
+  /* No border-top: the section separates itself from the workspace list above
+     with its own top padding (12px) instead of a rule. */
+  padding: 12px 0 2px;
 }
 
+/* The section header is the collapse toggle, mirroring the workspace section's
+   header: same height, type, and color, plus the same disclosure triangle and
+   the same open/closed rotation. */
 .header {
   flex: none;
   display: flex;
   align-items: center;
   gap: 4px;
+  width: 100%;
   height: 36px;
   margin-bottom: 4px;
   padding-left: 4px;
+  border: none;
+  border-radius: 12px;
+  background: transparent;
   color: var(--dsw-alias-label-tertiary);
   font-size: 14px;
   font-weight: 400;
   line-height: 20px;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* Disclosure arrow: the shell's thin chevron trailing the label, turned a
+   quarter while the section is open, so where it points is the fold direction —
+   placed the way the Codex sidebar places it ("<name> › / <name> ⌄"). */
+.chevron {
+  flex: none;
+  transition: transform 150ms var(--ds-ease-in-out);
+}
+
+.chevronOpen {
+  transform: rotate(90deg);
+}
+
+/* The workspace header's arrow: the same glyph on the same turn, injected into
+   the shell's DOM and marked by attribute (a hashed class cannot reach it). The
+   turn itself is written inline by the fold layer. */
+[data-dsh-recent-section-chevron] {
+  flex: none;
+  transition: transform 150ms var(--ds-ease-in-out);
 }
 
 .list {
   list-style: none;
   margin: 0;
   padding: 0;
-  /* Natural height: the list follows the workspace list, and an expanded list
-     lets the column's own scroll areas absorb the squeeze — the workspace tree
-     above shrinks and scrolls, exactly like one more section in the column. */
+  /* Natural height: the list is part of the column's scroller, so a page of
+     rows simply makes the column taller and the column's own scroll area
+     carries the operator down to it and past it. */
 }
 
+/* The end of the rendered window: the element the section watches to decide
+   that the next page of older sessions should load. It keeps a real box (an
+   area-less target has no intersection to report) while staying invisible and
+   out of the accessibility tree — the page arrives before it is reached, so
+   nothing is ever seen here. */
+.sentinel {
+  height: 1px;
+  margin: 0;
+  padding: 0;
+}
+
+/* One session row: the shell's own session-row metrics (32px tall, no gap, 8px
+   inline start plus the workspace indent variable, medium radius) so the
+   workspace tree above and the recent list below are one column of identical
+   rows. The highlight is the shell's too: the row a pointer rests on and the
+   row holding the current session paint the same fill. */
 .row {
+  box-sizing: border-box;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 0;
   width: 100%;
-  height: 34px;
+  height: 32px;
   padding: 0 8px;
+  padding-inline-start: calc(8px + var(--dsh-workspace-indent, 0px));
   border: none;
-  border-radius: 8px;
+  border-radius: var(--dsw-radius-md);
   background: transparent;
   color: var(--dsw-alias-label-primary);
   font-size: 14px;
   line-height: 20px;
-  text-align: left;
   cursor: pointer;
+  user-select: none;
 }
 
-.row:hover {
+.row:hover,
+.rowCurrent,
+.rowMenuOpen {
   background: var(--dsw-alias-interactive-bg-hover);
 }
 
-.rowCurrent {
-  background: var(--dsw-alias-interactive-bg-active);
-}
-
-.rowDot {
+/* The leading cell: the state dot's 16x20 box, the same one the shell's session
+   rows give it. */
+.slot {
   flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 20px;
+  color: var(--dsw-alias-label-tertiary);
 }
 
-.rowTitle {
+.title {
   flex: 1;
   min-width: 0;
+  margin: 0 6px 0 4px;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
-/* Workspace name plus age: the one fact that tells two same-titled sessions
-   apart. The age never truncates — a workspace name long enough to crowd the
-   row gives up its own characters first. */
-.rowMeta {
+/* The row's trailing age, in the shell's caption size, or — while an
+   interaction waits — its compact label. */
+.time {
   flex: none;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  max-width: 52%;
   color: var(--dsw-alias-label-tertiary);
-  font-size: 12px;
+  font-size: 10px;
+  line-height: 16px;
 }
 
-.rowWorkspace {
+/* The resting pin marker: a non-interactive glyph in the trailing cell the
+   hover actions take over. */
+.pinIndicator {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 20px;
+  margin-left: 6px;
+  color: var(--dsw-alias-label-caption);
+}
+
+/* The row's actions: hidden at rest, revealed while the pointer is on the row
+   or its menu is open — and then they hold the space the age and the pin marker
+   give up, exactly as the shell's rows swap them. */
+.rowActions {
+  flex: none;
+  display: none;
+  align-items: center;
+  gap: 10px;
+}
+
+.row:hover .rowActions,
+.rowMenuOpen .rowActions {
+  display: inline-flex;
+}
+
+.row:hover .time,
+.rowMenuOpen .time,
+.row:hover .pinIndicator,
+.rowMenuOpen .pinIndicator {
+  display: none;
+}
+
+/* One 16px action glyph: the shell's own icon button, colors included. */
+.iconButton {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: var(--dsw-radius-xs);
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: pointer;
+}
+
+.iconButton:hover {
+  color: var(--dsw-alias-label-primary);
+}
+
+/* Hover-card body: the workspace tree's session-card values (title white,
+   supporting lines #cfd3d6, status #adb2b8). The card surface is fixed
+   #2C2C2E in both themes (the primitive's own figma value), so these are
+   component constants rather than theme tokens — a themed label color would
+   go dark-on-dark in light mode. */
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* A card the pointer has left must be gone the instant another row takes the
+   hover. The primitive keeps it mounted through its own 200ms pointer grace and
+   the section cannot close it from outside, so hiding it here is what stops a
+   sweep down the list from stacking panels. The card body carries the marker;
+   `:has` is the only way from our content up to the primitive's portalled
+   wrapper, the one element whose visibility this plugin does not own.
+   Hidden with `visibility`, not `display`: the wrapper keeps its box, so the
+   primitive's own measurement of the card stays valid while it is hidden. */
+body > div:has(> [data-recent-stale]) {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.cardTitle {
+  color: #fff;
+  overflow-wrap: break-word;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.cardTime {
+  color: #cfd3d6;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.cardStatus {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #adb2b8;
+  font-size: 12px;
+  line-height: 20px;
+}
+
+/* The project line: the one fact a flat cross-project list has to carry, drawn
+   with the card's own supporting color and size (the shell's `hoverPath` values)
+   so it reads as part of the card rather than as a foreign row. */
+.cardWorkspace {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: #cfd3d6;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.cardFolder {
+  flex: none;
+}
+
+.cardWorkspaceName {
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
-.rowDivider {
-  flex: none;
+/* The stop-and-archive confirmation's parts: the shell's own archive dialog
+   paints its commit action in the error color and its failure line in plain
+   error text. */
+.deleteAction:not(:disabled) {
+  color: var(--dsw-alias-state-error-primary);
 }
 
-.rowTime {
-  flex: none;
+.archiveError {
+  color: var(--dsw-alias-state-error-primary);
+  font-size: 12px;
+  line-height: 18px;
 }
 
-/* The fold row: identical for the workspace list and this section, matching the
-   shell's own session overflow control (its `sessionOverflowButton`), so
-   "展开其余 N 个…" looks the same wherever the column folds a list. The
-   workspace list's row is injected into the shell's DOM and carries the owner
-   attribute instead of this hashed class. */
-.foldRow,
+/* The workspace list's fold row ("展开其余 N 个工作区…"), injected into the
+   shell's DOM and carrying the owner attribute instead of a hashed class. Row
+   metrics follow the shell's own session overflow control (28px, radius 8), but
+   the type is the section's own: 14px like the section header, in a dimmed
+   tertiary (tertiary at ~37%) that reads as a control, not as a session row. */
 [data-dsh-recent-fold] {
   flex: none;
   width: 100%;
   height: 28px;
+  padding: 6px 12px 0 6px;
   border: none;
   border-radius: 8px;
-  padding: 0 12px 0 28px;
   background: transparent;
+  color: #adb2b85e;
   cursor: pointer;
   text-align: left;
-  font-size: 12px;
-  color: var(--dsw-alias-label-tertiary);
+  font-size: 14px;
 }
 
-.foldRow:hover,
 [data-dsh-recent-fold]:hover {
   background: transparent;
   color: var(--dsw-alias-label-secondary);
@@ -139,4 +315,11 @@
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chevron,
+  [data-dsh-recent-section-chevron] {
+    transition: none;
+  }
 }

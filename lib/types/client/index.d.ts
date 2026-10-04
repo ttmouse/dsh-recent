@@ -8,7 +8,12 @@
  * framework standard kit.
  */
 import type { Context } from '@deepseek-ai/cordis';
-/** Required services: the slot registry, the locale service, and the session store. */
+/**
+ * Required services: the slot registry, the locale service, and the two owners
+ * of the standard kit this section reads. `uiSession` and `uiWorkspace` are the
+ * plugins that publish the `useSessions` / `useSessionStatus` / `useWorkspaces`
+ * root hooks, so waiting on them keeps the first render from seeing them absent.
+ */
 export declare const inject: string[];
 /**
  * Client plugin body: contribute the 最近 section to the sidebar foot. The

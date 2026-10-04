@@ -5,48 +5,60 @@
  * never disagree about which sessions hold history: archived sessions are
  * hidden, subagent-origin rows belong to their parent's catalog, and blank
  * provisional sessions — which hold no history at all — never appear.
+ *
+ * The facts a row carries are the ones the shell's own session row renders —
+ * title, age (or the pending-interaction label that replaces it), live state,
+ * and pin membership — so a 最近 row and a workspace row describe the same
+ * session with the same elements, down to the hover card.
  */
-import type { SessionId, SessionListState, WorkspaceView } from '@deepseek-ai/dsh-client-runtime/client'
-
-/** Rows the derivation hands the section before its fold; the fold shows {@link FOLD_LIMIT} of them. */
-export const RECENT_ROW_LIMIT = 20
+import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { WorkspaceView } from '@deepseek-ai/dsh-api-workspace-controller/client'
+import type { SessionStatusSnapshot } from '@deepseek-ai/dsh-client-ui-session/client'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 
 /**
- * Items each folded list shows. The shell caps one Workspace's sessions at five
- * the same way (`COLLAPSED_SESSION_LIMIT`), and each list here reserves space
- * for the other, so one number serves the workspace list and the 最近 list
- * alike.
+ * Rows the section renders per page. The derivation hands over every session
+ * that holds history, and the section renders a window over that list: one page
+ * at first, one more page each time the operator scrolls the column to the end
+ * of what is rendered.
+ */
+export const RECENT_PAGE_SIZE = 20
+
+/**
+ * Items the workspace list keeps while folded. The shell caps one Workspace's
+ * sessions at five the same way (`COLLAPSED_SESSION_LIMIT`), so the column's two
+ * folds trade the same number of rows.
  */
 export const FOLD_LIMIT = 5
 
-/** Relative-time bucket of a row's trailing label. */
-export type RecentTimeUnit = 'now' | 'minutes' | 'hours' | 'days' | 'months' | 'years'
+/**
+ * Pending interactions a sidebar session row marks. Session-scoped domains
+ * publish their own interaction objects, and the shell's rows carry a dot and a
+ * compact trailing label for exactly these three kinds; every other kind stays
+ * behind the surface that owns it.
+ */
+export type RecentPending = 'approval' | 'plan-review' | 'question'
 
-/** Structured relative time: the bucket plus its magnitude (0 for 'now'). */
-export interface RecentTime {
-  unit: RecentTimeUnit
-  n: number
+/**
+ * The rendered window after the operator reaches its end: one more page of
+ * older sessions, never past the end of the history.
+ * @param rendered - rows the section currently renders.
+ * @param total - rows the derivation handed over.
+ * @param page - rows one page holds.
+ * @returns the window to render next.
+ */
+export function growWindow(rendered: number, total: number, page: number = RECENT_PAGE_SIZE): number {
+  return Math.min(rendered + page, total)
 }
 
 /**
- * Compact relative time for a row, as a structured bucket the component
- * localizes ("now"/"5min"/"3h" in en, "刚刚"/"5分钟" in zh). Bucket edges match
- * the workspace browser's, so a session reads the same age on both surfaces.
- * @param updatedAt - epoch ms of the session's last activity.
- * @param now - current epoch ms (injected for pure rendering).
- * @returns the row's trailing time bucket and magnitude.
+ * The pending-interaction kind the shell's rows mark, or undefined for a kind
+ * no row offers.
+ * @param kind - the pending interaction's domain kind.
+ * @returns the markable kind.
  */
-export function relativeTime(updatedAt: number, now: number): RecentTime {
-  const MIN = 60_000
-  const HOUR = 3_600_000
-  const DAY = 86_400_000
-  const diff = Math.max(0, now - updatedAt)
-  if (diff < MIN) return { unit: 'now', n: 0 }
-  if (diff < HOUR) return { unit: 'minutes', n: Math.floor(diff / MIN) }
-  if (diff < DAY) return { unit: 'hours', n: Math.floor(diff / HOUR) }
-  if (diff < 30 * DAY) return { unit: 'days', n: Math.floor(diff / DAY) }
-  if (diff < 365 * DAY) return { unit: 'months', n: Math.floor(diff / (30 * DAY)) }
-  return { unit: 'years', n: Math.floor(diff / (365 * DAY)) }
+export function marksWaiting(kind: string | undefined): RecentPending | undefined {
+  return kind === 'approval' || kind === 'plan-review' || kind === 'question' ? kind : undefined
 }
 
 /** One rendered 最近 row. */
@@ -58,20 +70,26 @@ export interface RecentRow {
   workspace: string
   updatedAt: number
   running: boolean
-  /** Waiting on this user (approval, question, or plan review). */
-  waiting: boolean
+  /** Pending interaction awaiting this user, as the row's amber dot and trailing label. */
+  pending: RecentPending | undefined
   /** Session is the current selection. */
   current: boolean
+  /** Session is pinned, so the row carries the resting pin marker. */
+  pinned: boolean
 }
 
 /** Everything the derivation reads; the component supplies it from props. */
 export interface RecentRowsInput {
-  /** Session metadata authority (list rows plus the current selection). */
+  /** Session catalog: rows, addresses, and each row's local retain counts. */
   list: SessionListState
   /** Workspace registry order, membership, and display titles. */
   workspaces: readonly WorkspaceView[]
   /** Registry-global archive set; members are hidden on every surface. */
   archivedSessionIds: readonly SessionId[]
+  /** Registry-global pin set; members lead their group and mark their row. */
+  pinnedSessionIds: readonly SessionId[]
+  /** Unified UI status by Session: live running state and the pending interaction. */
+  status: SessionStatusSnapshot
   /** Localized label for sessions outside every workspace. */
   ungroupedLabel: string
 }
@@ -84,14 +102,29 @@ function pathLabel(cwd: string | undefined): string | undefined {
 }
 
 /**
+ * The session the main panel shows: the one holding the main view's local
+ * reference count. Selection lives in that reference, not in the catalog, so
+ * the list state carries no `current` field to read.
+ * @param list - the session catalog.
+ * @returns the main-view session id, or undefined while no session is selected.
+ */
+function currentSessionId(list: SessionListState): SessionId | undefined {
+  return Object.values(list.byId).find(session => (session.retainedBy.mainView ?? 0) > 0)?.id
+}
+
+/**
  * Derive the 最近 rows: every session that holds history, across all
- * workspaces, newest first, capped at {@link RECENT_ROW_LIMIT}.
- * @param input - list, workspace registry, archive set, and the localized ungrouped label.
+ * workspaces, newest first. The list is complete — the section decides how much
+ * of it to render at once, so scrolling can reach older sessions without the
+ * derivation having thrown them away.
+ * @param input - list, workspace registry, archive and pin sets, session status, and the localized ungrouped label.
  * @returns rows in render order.
  */
 export function deriveRecentRows(input: RecentRowsInput): RecentRow[] {
-  const { list, workspaces, archivedSessionIds } = input
+  const { list, workspaces, archivedSessionIds, pinnedSessionIds, status } = input
   const archived = new Set<SessionId>(archivedSessionIds)
+  const pinned = new Set<SessionId>(pinnedSessionIds)
+  const current = currentSessionId(list)
   const workspaceOf = new Map<SessionId, string>()
   for (const workspace of workspaces) {
     for (const id of workspace.sessionIds) {
@@ -105,16 +138,18 @@ export function deriveRecentRows(input: RecentRowsInput): RecentRow[] {
     if (session.origin === 'subagent') continue
     if (session.blank) continue
     if (archived.has(session.id)) continue
+    const live = status.get(session.id)
     rows.push({
       id: session.id,
       title: session.displayTitle,
       workspace: workspaceOf.get(session.id) ?? pathLabel(session.cwd) ?? input.ungroupedLabel,
       updatedAt: session.updatedAt,
-      running: session.running,
-      waiting: session.pendingInteraction !== undefined,
-      current: session.id === list.current,
+      running: live?.running ?? session.running,
+      pending: marksWaiting(live?.pendingInteraction?.kind),
+      current: session.id === current,
+      pinned: pinned.has(session.id),
     })
   }
   rows.sort((a, b) => (b.updatedAt !== a.updatedAt ? b.updatedAt - a.updatedAt : a.id < b.id ? -1 : 1))
-  return rows.slice(0, RECENT_ROW_LIMIT)
+  return rows
 }
