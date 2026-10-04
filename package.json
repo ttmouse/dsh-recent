@@ -4,6 +4,15 @@
   "description": "DSH web GUI plugin: a Codex-style 最近 (Recent) section in the left sidebar that flattens the newest sessions of every workspace into one jump list, directly below the workspace tree.",
   "type": "module",
   "license": "MIT",
+  "author": "ttmouse <ttmouseg@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ttmouse/dsh-recent.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ttmouse/dsh-recent/issues"
+  },
+  "homepage": "https://github.com/ttmouse/dsh-recent#readme",
   "packageManager": "pnpm@11.7.0",
   "engines": {
     "node": "^22.19.0 || >=24.0.0"
@@ -43,7 +52,8 @@
     "lib/client.js",
     "lib/types/**/*.d.ts",
     "cordis.patch.yml",
-    "README.md"
+    "README.md",
+    "README.en.md"
   ],
   "scripts": {
     "build": "rm -rf lib && tsc -p tsconfig.json && tsdown",
@@ -87,6 +97,7 @@
     "@types/node": "^22.20.1",
     "@types/react": "~18.3.1",
     "@types/react-dom": "~18.3.1",
+    "jsdom": "^30.1.1",
     "lightningcss": "^1.32.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",

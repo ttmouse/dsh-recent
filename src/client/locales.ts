@@ -1,4 +1,4 @@
-/** `recent` namespace dictionaries (the sidebar 最近 section copy). */
+/** `recent` namespace dictionaries (the sidebar 最近 section copy and its fold row). */
 
 /** Dictionary namespace owned by this plugin. */
 export const NS = 'recent'
@@ -6,9 +6,9 @@ export const NS = 'recent'
 /** The recent-section dictionary key set (the source of truth for both locales). */
 export type RecentKey =
   | 'section.recent'
-  | 'section.count'
-  | 'section.expand'
-  | 'section.collapse'
+  | 'fold.expandWorkspaces'
+  | 'fold.expandSessions'
+  | 'fold.collapse'
   | 'row.open'
   | 'workspace.ungrouped'
   | 'status.running'
@@ -31,9 +31,9 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 /** Simplified Chinese dictionary (the key-set source of truth). */
 export const zh: Record<RecentKey, string> = {
   'section.recent': '最近',
-  'section.count': '{n} 个会话',
-  'section.expand': '展开最近会话',
-  'section.collapse': '收起最近会话',
+  'fold.expandWorkspaces': '展开其余 {n} 个工作区',
+  'fold.expandSessions': '展开其余 {n} 个会话',
+  'fold.collapse': '收起',
   'row.open': '打开会话“{name}”',
   'workspace.ungrouped': '未分组',
   'status.running': '进行中',
@@ -50,9 +50,9 @@ export const zh: Record<RecentKey, string> = {
 /** English dictionary, checked complete against the zh key set. */
 export const en: Record<RecentKey, string> = {
   'section.recent': 'Recent',
-  'section.count': '{n} sessions',
-  'section.expand': 'Expand recent sessions',
-  'section.collapse': 'Collapse recent sessions',
+  'fold.expandWorkspaces': 'Show {n} more workspaces',
+  'fold.expandSessions': 'Show {n} more sessions',
+  'fold.collapse': 'Show less',
   'row.open': 'Open session “{name}”',
   'workspace.ungrouped': 'Ungrouped',
   'status.running': 'Running',

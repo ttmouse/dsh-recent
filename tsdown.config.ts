@@ -7,13 +7,22 @@
  * are emitted by tsc into lib/types/.
  */
 import { readFile } from 'node:fs/promises'
-import { dirname, resolve as resolvePath } from 'node:path'
+import { dirname, relative, resolve as resolvePath } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { transform } from 'lightningcss'
 import type { UserConfig } from 'tsdown'
 
 const PLUGIN_ID = 'dsh-recent'
 const CSS_VIRTUAL_PREFIX = '\0dsh-css:'
 const CSS_VIRTUAL_SUFFIX = '.mjs'
+
+/**
+ * Project root, used to keep every virtual CSS module id relative. The
+ * bundler prints each module's id in an emitted region comment, so an absolute
+ * id would bake this machine's path into the shipped bundle — and make a
+ * rebuild on another machine differ from the committed `lib/`.
+ */
+const PROJECT_ROOT = dirname(fileURLToPath(import.meta.url))
 
 /**
  * Externals answered by the DSH loader module table. ui-primitives is a table
@@ -61,22 +70,27 @@ const clientBundle: UserConfig = {
       if (!source.endsWith('.module.css')) return null
       const abs = importer !== undefined
         ? resolvePath(dirname(importer), source)
-        : source
-      return CSS_VIRTUAL_PREFIX + abs + CSS_VIRTUAL_SUFFIX
+        : resolvePath(source)
+      return CSS_VIRTUAL_PREFIX + relative(PROJECT_ROOT, abs) + CSS_VIRTUAL_SUFFIX
     },
     async load(virtualId: string) {
       if (!virtualId.startsWith(CSS_VIRTUAL_PREFIX)) return null
-      const fileId = virtualId.slice(CSS_VIRTUAL_PREFIX.length, -CSS_VIRTUAL_SUFFIX.length)
+      const fileId = resolvePath(PROJECT_ROOT, virtualId.slice(CSS_VIRTUAL_PREFIX.length, -CSS_VIRTUAL_SUFFIX.length))
       this.addWatchFile(fileId)
       const source = await readFile(fileId)
       const { code, exports: cssExports } = transform({
-        filename: fileId,
+        filename: relative(PROJECT_ROOT, fileId),
         code: source,
         cssModules: { pattern: '[hash]_[local]' },
         minify: true,
       })
+      // Sorted so the emitted class map is byte-stable across builds: the
+      // committed lib/ is compared against a fresh build in CI, and
+      // lightningcss's export order is not stable between runs.
       const classMap: Record<string, string> = {}
-      for (const [local, exp] of Object.entries(cssExports ?? {})) classMap[local] = exp.name
+      for (const local of Object.keys(cssExports ?? {}).sort()) {
+        classMap[local] = (cssExports ?? {})[local].name
+      }
       return [
         `const css = ${JSON.stringify(code.toString())};`,
         `const tagId = ${JSON.stringify(`${PLUGIN_ID}/RecentSessions.module.css`)};`,

@@ -11,7 +11,8 @@ describe('recent locales', () => {
   })
 
   it('carries every template parameter its call sites pass', () => {
-    expect(zh['section.count']).toContain('{n}')
+    expect(zh['fold.expandWorkspaces']).toContain('{n}')
+    expect(zh['fold.expandSessions']).toContain('{n}')
     expect(zh['row.open']).toContain('{name}')
     expect(zh['time.minutes']).toContain('{n}')
     expect(zh['time.ago']).toContain('{t}')

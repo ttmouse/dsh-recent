@@ -8,8 +8,16 @@
  */
 import type { SessionId, SessionListState, WorkspaceView } from '@deepseek-ai/dsh-client-runtime/client'
 
-/** Maximum rows the section renders; the newest sessions are the useful ones. */
-export const RECENT_ROW_LIMIT = 8
+/** Rows the derivation hands the section before its fold; the fold shows {@link FOLD_LIMIT} of them. */
+export const RECENT_ROW_LIMIT = 20
+
+/**
+ * Items each folded list shows. The shell caps one Workspace's sessions at five
+ * the same way (`COLLAPSED_SESSION_LIMIT`), and each list here reserves space
+ * for the other, so one number serves the workspace list and the 最近 list
+ * alike.
+ */
+export const FOLD_LIMIT = 5
 
 /** Relative-time bucket of a row's trailing label. */
 export type RecentTimeUnit = 'now' | 'minutes' | 'hours' | 'days' | 'months' | 'years'

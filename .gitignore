@@ -1,8 +1,14 @@
-# 依赖与构建产物
+# 依赖
 node_modules/
-lib/
+
+# 构建产物 `lib/` 是提交进仓库的：`dsh plugin add github:…` 直接装下来就能跑，
+# 不需要 prepare 构建步骤。改完源码记得重新 `pnpm run build`，CI 会校验两者一致。
 
 # 本地杂项
 .DS_Store
 *.log
 *.tsbuildinfo
+
+# 本地环境与测试产物
+.env*
+coverage/

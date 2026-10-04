@@ -4,7 +4,7 @@
 # `dsh.profile.bundles`. The row id is deployment-local; the package name must
 # match package.json. This host row makes the browser plugin visible to the web
 # shell: the node half registers the client bundle with the plugin registry,
-# which then serves /plugins/recent/client.js.
+# which then serves it to the browser alongside the shell's other plugin assets.
 
 - insert:
     - id: dsh-recent

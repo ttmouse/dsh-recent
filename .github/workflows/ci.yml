@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm run typecheck
+
+      # The bundle-contract spec asserts the built artifact, so it runs after the
+      # build; on a clean tree it skips instead.
+      - run: pnpm run build
+
+      # `lib/` is committed so a `dsh plugin add github:…` install resolves
+      # without a build step. A rebuild that changes it means the two drifted.
+      - name: committed lib matches a fresh build
+        run: git diff --exit-code -- lib
+
+      - run: pnpm test
