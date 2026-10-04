@@ -53,7 +53,9 @@
     "lib/types/**/*.d.ts",
     "cordis.patch.yml",
     "README.md",
-    "README.en.md"
+    "README.en.md",
+    "docs/sidebar.png",
+    "src"
   ],
   "scripts": {
     "build": "rm -rf lib && tsc -p tsconfig.json && tsdown",
