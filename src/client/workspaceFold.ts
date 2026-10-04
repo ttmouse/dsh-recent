@@ -7,7 +7,10 @@
  *   away, so the column's space goes to 最近 instead of to project rows.
  * - **List fold** (the trailing row): the list keeps {@link WorkspaceFoldOptions.limit}
  *   groups — the ones holding the newest history — and holds the rest behind
- *   one row.
+ *   one row, revealing {@link FOLD_STEP} more of them per click, one step at a
+ *   time, until every group is back and the row offers to fold the list down
+ *   again. It is the same control the session rows carry one level down, so the
+ *   column's two folds step the same way.
  *
  * The ranking is what keeps the column honest about being "recently used": a
  * group that now holds only old history loses its place to a group that was
@@ -59,6 +62,9 @@ export const SECTION_COLLAPSED_ATTRIBUTE = 'data-dsh-recent-section'
 /** Owner attribute on the injected chevron inside the section header. */
 export const SECTION_CHEVRON_ATTRIBUTE = 'data-dsh-recent-section-chevron'
 
+/** Groups one expansion of the fold row reveals — the same step the session folds take. */
+export const FOLD_STEP = 10
+
 /**
  * Disclosure chevron geometry, copied from the shell's own thin chevron
  * (`IconChevronRightOutlineRegular`: 16-unit box, 1px stroke) so the sidebar
@@ -84,7 +90,7 @@ export interface FoldLabels {
 
 /** Construction options for {@link WorkspaceListFold}. */
 export interface WorkspaceFoldOptions {
-  /** Groups kept visible while the list is folded (ignored while collapsed). */
+  /** Groups the first window keeps, before any expansion step (ignored while collapsed). */
   limit: number
   /** Current copy; re-read on every application, so a locale switch needs no re-install. */
   labels: FoldLabels
@@ -94,8 +100,6 @@ export interface WorkspaceFoldOptions {
    * every application, so the owner can swap the map as the catalog moves.
    */
   recency: (key: string) => number | undefined
-  /** Called when the operator clicks the toggle row. */
-  onToggle: () => void
   /** Called when the operator clicks the section header chevron. */
   onToggleSection: () => void
 }
@@ -253,7 +257,8 @@ function createChevron(): SVGSVGElement {
  */
 export class WorkspaceListFold {
   private collapsed = false
-  private expanded = false
+  /** Groups the window currently keeps; starts at the fold limit and steps up from there. */
+  private revealed: number
   private observer: MutationObserver | undefined
   private scheduled = false
   private column: HTMLElement | undefined
@@ -262,14 +267,15 @@ export class WorkspaceListFold {
   private readonly button: HTMLButtonElement
 
   /**
-   * @param options - fold limit, copy, the group ranking, and the two toggle callbacks.
+   * @param options - fold limit, copy, the group ranking, and the section toggle callback.
    */
   constructor(private readonly options: WorkspaceFoldOptions) {
+    this.revealed = options.limit
     this.chevron = createChevron()
     this.button = document.createElement('button')
     this.button.type = 'button'
     this.button.setAttribute(FOLD_ROW_ATTRIBUTE, '')
-    this.button.addEventListener('click', () => { this.options.onToggle() })
+    this.button.addEventListener('click', () => { this.advance() })
   }
 
   /**
@@ -300,12 +306,12 @@ export class WorkspaceListFold {
   }
 
   /**
-   * Fold or unfold the list.
-   * @param expanded - true shows every group, false keeps the fold limit.
+   * Fold the list back to its first window: the column was reopened, or the
+   * owner wants the folded default back. The window is a look, not a setting.
    */
-  setExpanded(expanded: boolean): void {
-    if (this.expanded === expanded) return
-    this.expanded = expanded
+  reset(): void {
+    if (this.revealed === this.options.limit) return
+    this.revealed = this.options.limit
     this.apply()
   }
 
@@ -378,7 +384,7 @@ export class WorkspaceListFold {
       return
     }
     const { visible, hidden } = splitByRecency(
-      groups, this.options.limit, this.expanded, group => this.groupRecency(group),
+      groups, this.revealed, false, group => this.groupRecency(group),
     )
     const kept = new Set(visible)
     for (const group of groups) setHidden(group, this.collapsed || !kept.has(group))
@@ -396,9 +402,9 @@ export class WorkspaceListFold {
       this.button.remove()
       return
     }
-    const label = this.expanded ? this.options.labels.collapse : this.options.labels.expand(hidden.length)
+    const label = hidden.length === 0 ? this.options.labels.collapse : this.options.labels.expand(hidden.length)
     if (this.button.textContent !== label) this.button.textContent = label
-    const expandedState = String(this.expanded)
+    const expandedState = String(hidden.length === 0)
     if (this.button.getAttribute('aria-expanded') !== expandedState) {
       this.button.setAttribute('aria-expanded', expandedState)
     }
@@ -418,6 +424,22 @@ export class WorkspaceListFold {
   private groupRecency(group: HTMLElement): number | undefined {
     const key = groupKey(group)
     return key === undefined ? undefined : this.options.recency(key)
+  }
+
+  /**
+   * One click on the fold row: reveal the next step of groups, or fold the list
+   * back to its first window once every group is back. The next window is cut
+   * from the ranking as it stands at click time, so a step only widens the same
+   * cut — it never reveals a group the fold would have hidden at the new size.
+   */
+  private advance(): void {
+    const container = workspaceListContainer(document)
+    const groups = container === undefined ? [] : groupSections(container)
+    const { visible } = splitByRecency(groups, this.revealed, false, group => this.groupRecency(group))
+    this.revealed = visible.length >= groups.length
+      ? this.options.limit
+      : Math.min(this.revealed + FOLD_STEP, groups.length)
+    this.apply()
   }
 
   /**

@@ -60,13 +60,26 @@ the column carries from the project tree into history.
   question, plan review), a pulse while it runs, and the row of the current
   session highlighted.
 - **Workspace folding** — the workspace list shows five folders by default behind
-  a `Show N more workspaces` row in the shell's own style; the recent list does
+  a `Show N more workspaces` row in the shell's own style, **revealing ten more
+  per click** and offering to fold back to the first five once every folder is
+  back; the recent list does
   not fold. The five are the ones with the newest history: every group is ranked
   by its own latest session, the ungrouped bucket competes like any workspace
   instead of holding a permanent place, and a folder whose chats are not recent —
   or which has none at all — only appears when a slot is left over. Expanding is a
   temporary state, so collapsing the sidebar and reopening it returns to the
   folded default, as in Codex.
+- **Per-project session folding** — every project shows its latest **five
+  conversations** by default, running, waiting and idle ones alike. The shell
+  counts only idle sessions against its own quota (running rows are always shown
+  on top of it), so a project with several sessions in flight leaks more than
+  five; this layer holds the window at five whatever state those conversations
+  are in. The fold row keeps the shell's own position, metrics and wording
+  (`Show N more sessions` / `Show less`), and **each click reveals ten more**, one
+  page at a time, until the project is exhausted — where the row offers to fold
+  back to the first five. The conversation you are reading is never hidden, and
+  folding a project away and opening it again returns it to its first five, the
+  way the shell resets its own quota.
 - **Native look** — `--dsw-*` semantic tokens plus the shell's own `StateDot`
   and chevron icons, so light/dark and every brand theme follow the shell; the
   fold row matches the shell's own session overflow control exactly.
@@ -76,8 +89,9 @@ the column carries from the project tree into history.
   keeps that primitive's fixed light-on-dark values so it never inverts.
 - **No shell source changes** — the recent section registers into the sidebar's
   long-standing `sidebar.footer.action` list slot and performs its actions
-  through the shell's public `uiWorkspace` service; the workspace list offers no
-  slot or service for folding, so that half is applied at the DOM level (see
+  through the shell's public `uiWorkspace` service; the workspace list and each
+  project's session list offer no slot or service for folding, so both halves are
+  applied at the DOM level (see
   Design notes). DSH's front end is neither patched nor rebuilt.
 
 ## Install
@@ -197,11 +211,33 @@ the committed `lib/` drifts from a fresh build.
   more: it is hidden by default and shows up only when its own sessions are new
   enough to win a place. The fold row trails the last kept group in render order,
   while the groups it hides stay where they are, simply out of sight — so
-  unfolding restores the original order.
-- **Folding is temporary state** — no store: the expanded flag lives in the
-  component, so collapsing the sidebar and reopening it (`wide` false → true)
-  returns the workspace list to the five-row default and the recent list to its
-  first page.
+  unfolding restores the original order. Each click widens the window by ten
+  groups (`FOLD_STEP`) until every group is back, where the row switches to
+  `Show less` and folds the list down to its first five again — the same step the
+  per-project session fold takes.
+- **Folding is temporary state** — no store: the window lives in the fold layer
+  (five groups, ten more per click), so collapsing the sidebar and reopening it
+  (`wide` false → true) returns the workspace list to the five-row default and
+  the recent list to its first page.
+- **Folding one project's sessions** — the shell keeps its quota in its own React
+  state (`sessionLimits`), which a plugin cannot reach, so this half is applied
+  from the outside too: the shell's own overflow control is hidden and this
+  layer's row takes its place, at its position and with its styling, while the
+  rows past the window are hidden with `display: none`. The window is per-project
+  temporary state (five by default, ten more per click) and is dropped when a
+  project is folded away and opened again — the moment the shell resets its own
+  quota to five. Only when a window needs more rows than the shell has **already
+  rendered** does this layer activate the shell's own control, once per page of
+  the shell's own quota (`ceil((rows needed − rows rendered) / 5)`), rather than
+  reading the DOM between activations: React may commit the shell's new rows a
+  task later, and a loop that watched for them would activate the control several
+  times too many. The rows the shell still holds back are read straight off its
+  own label (`Show N more sessions`), so this layer's count is always "rendered
+  but held back by the window" plus "not rendered by the shell yet", whichever
+  page the shell happens to be on; a label it cannot read counts as zero. The
+  current conversation's row is never hidden: the shell reveals it in its own
+  tree by dropping its quota, and hiding it here would send that reveal's scroll
+  to a row nobody can see.
 - **The section lives inside the list's scroll area** — it is portalled into the
   shell's own scrolling container (the workspace tree's `overflow-y: auto` list)
   as that column's last content. So there is exactly one scrollbar: scrolling
@@ -237,6 +273,18 @@ the committed `lib/` drifts from a fresh build.
   section's own scroll area rides the same
   lookup: if the shell stops giving its list its own `overflow-y`, the section
   follows that resolution to whatever element the lookup names.
+- **Per-project session folding depends on the shell's DOM too** — it keys off the
+  `data-row-key="session:<id>"` and `data-row-key="overflow:<workspace key>"`
+  row addresses, the `aria-expanded` state on a group's header row (whether the
+  project is open), and the number inside the shell's own overflow label (how many
+  rows it holds back). If the shell changes any of them the layer degrades instead
+  of failing: an unreadable number understates the count, an unreadable project
+  state stops the window from resetting, and no row is ever lost — at worst the
+  column falls back to what the shell itself would show. The layer also activates
+  the shell's own control to ask for more rows, so a shell that changes that
+  control's behavior (its page size, or what an activation does once expanded)
+  makes those requests inaccurate — but how many rows are on screen stays this
+  plugin's decision.
 - **Fold, not reorder** — freshness only decides who survives; workspace order
   stays the list's own (newest first,
   plus manual ordering); the plugin does not re-sort by recent activity, which
