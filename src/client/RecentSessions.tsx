@@ -8,7 +8,8 @@
  *
  * The same component owns the fold control for the shell's workspace section
  * ({@link WorkspaceListFold}): its header chevron collapses the whole list, and
- * the trailing row folds the list to five workspaces. This section does not
+ * the trailing row keeps the five folders with the newest history, folding every
+ * other one — the ungrouped bucket included — behind itself. This section does not
  * fold: it renders a window over every session that holds history and appends
  * one more page of older sessions whenever the end of that window scrolls into
  * view, so the list keeps growing instead of holding the rest behind a row.

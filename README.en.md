@@ -59,10 +59,14 @@ the column carries from the project tree into history.
 - **Live state** — a yellow dot while a session waits for you (approval,
   question, plan review), a pulse while it runs, and the row of the current
   session highlighted.
-- **Workspace folding** — the workspace list folds to five entries behind a
-  `Show N more workspaces` row in the shell's own style; the recent list does not
-  fold. Expanding is a temporary state, so collapsing the sidebar and reopening
-  it returns to the folded default, as in Codex.
+- **Workspace folding** — the workspace list shows five folders by default behind
+  a `Show N more workspaces` row in the shell's own style; the recent list does
+  not fold. The five are the ones with the newest history: every group is ranked
+  by its own latest session, the ungrouped bucket competes like any workspace
+  instead of holding a permanent place, and a folder whose chats are not recent —
+  or which has none at all — only appears when a slot is left over. Expanding is a
+  temporary state, so collapsing the sidebar and reopening it returns to the
+  folded default, as in Codex.
 - **Native look** — `--dsw-*` semantic tokens plus the shell's own `StateDot`
   and chevron icons, so light/dark and every brand theme follow the shell; the
   fold row matches the shell's own session overflow control exactly.
@@ -172,7 +176,7 @@ the committed `lib/` drifts from a fresh build.
   card already shows the full title at once.
 - **Folding the workspace list** — the shell renders one `_groupSection` per
   workspace and exposes no "show fewer" affordance, slot, store or config field,
-  so the plugin applies it from the outside: every group past the fifth gets
+  so the plugin applies it from the outside: the groups that lose the ranking get
   `display: none` and a fold row is inserted after the last group the fold
   keeps. React rewrites the list on
   every frame, so a `MutationObserver` on `document.body` re-applies the fold,
@@ -180,12 +184,20 @@ the committed `lib/` drifts from a fresh build.
   records to sidebar mutations first, so conversation streaming never reaches
   `apply()`. The container is resolved as the parent of the first rendered
   `_groupSection`, which leaves the flat/search rendering (no group wrappers)
-  untouched. The shell's trailing bucket for the sessions no workspace claims
-  stays out of the fold — neither hidden nor counted towards the five — because
-  that bucket is those sessions' only entry point in the column. The fold row is
-  anchored on the last kept group in render order, so it trails that bucket;
-  anchored on the fifth workspace instead it would push the bucket below the row,
-  where it reads as having leaked out of the hidden remainder.
+  untouched. The fold cuts by "used most recently", not by list order: every
+  group's freshness is its own newest session (membership copied from the shell —
+  registered workspaces claim their own sessions and the rest belong to the
+  ungrouped bucket), and the five freshest survive. A group's identity comes from
+  the DOM: the shell writes `data-row-key="workspace:<workspace id>"` on each
+  group's header row (the bucket's key is the empty string), which is the only
+  stable address a group has — its classes are hashed and its markup is React's.
+  A group with no history ranks behind every group that has some, so it appears
+  only while a slot is left over, and a list that already fits the five is left
+  alone entirely. The ungrouped bucket therefore has no special treatment any
+  more: it is hidden by default and shows up only when its own sessions are new
+  enough to win a place. The fold row trails the last kept group in render order,
+  while the groups it hides stay where they are, simply out of sight — so
+  unfolding restores the original order.
 - **Folding is temporary state** — no store: the expanded flag lives in the
   component, so collapsing the sidebar and reopening it (`wide` false → true)
   returns the workspace list to the five-row default and the recent list to its
@@ -216,13 +228,17 @@ the committed `lib/` drifts from a fresh build.
 - **Wide column only** — the 56px rail renders no recent section (an entry that
   deserves a rail cell should be a `sidebar.panellist` panel instead).
 - **Workspace folding depends on the shell's DOM** — it keys off the
-  `_groupSection` / `_footArea` CSS-module suffixes and the first group's parent.
+  `_groupSection` / `_footArea` CSS-module suffixes, the first group's parent, and
+  the `data-row-key="workspace:<id>"` address on each group's header row.
   If the shell renames or restructures them the fold silently stops applying
-  (degrading to the shell's full list) instead of failing loudly. The fold counts
-  workspace groups, not sessions. The section's own scroll area rides the same
+  (degrading to the shell's full list) instead of failing loudly; a group whose
+  identity cannot be read ranks last, which is the same as cutting by list order.
+  The fold counts groups (the ungrouped bucket included), not sessions. The
+  section's own scroll area rides the same
   lookup: if the shell stops giving its list its own `overflow-y`, the section
   follows that resolution to whatever element the lookup names.
-- **Fold, not reorder** — workspace order stays the list's own (newest first,
+- **Fold, not reorder** — freshness only decides who survives; workspace order
+  stays the list's own (newest first,
   plus manual ordering); the plugin does not re-sort by recent activity, which
   would require changing the shell's list order upstream.
 - **One page at a time** — 20 rows render first and each scroll appends 20
