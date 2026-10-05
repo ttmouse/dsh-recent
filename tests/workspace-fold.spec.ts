@@ -112,15 +112,17 @@ function visibleTexts(container: HTMLElement): string[] {
 
 /** A fold whose ranking reads one table of group-key → newest history time. */
 function makeFold(overrides: Partial<ConstructorParameters<typeof WorkspaceListFold>[0]> = {}) {
+  const onToggle = vi.fn()
   const onToggleSection = vi.fn()
   const fold = new WorkspaceListFold({
     limit: 5,
     labels: { expand: hidden => `show ${hidden} more`, collapse: 'show less' },
     recency: () => undefined,
+    onToggle,
     onToggleSection,
     ...overrides,
   })
-  return { fold, onToggleSection }
+  return { fold, onToggle, onToggleSection }
 }
 
 /** Ranking input for {@link makeFold}: newest history time per group key. */
@@ -311,41 +313,28 @@ describe('WorkspaceListFold', () => {
     dispose()
   })
 
-  it('reveals ten more groups per click and folds back to the first window', () => {
-    const container = mountSidebar(24)
+  it('unfolds to every group and collapses back to the limit', () => {
+    const container = mountSidebar(8)
     const { fold } = makeFold({ recency: recencyFrom({ w0: 100, w1: 90, w2: 80, w3: 70, w4: 60 }) })
     const dispose = fold.start()
-    expect(visibleTexts(container)).toHaveLength(5)
-    expect(foldRow()?.textContent).toBe('show 19 more')
 
-    foldRow()?.click()
-    expect(visibleTexts(container)).toHaveLength(15)
-    expect(foldRow()?.textContent).toBe('show 9 more')
-    expect(foldRow()?.previousElementSibling).toBe(container.children[14])
-
-    foldRow()?.click()
-    expect(visibleTexts(container)).toHaveLength(24)
+    fold.setExpanded(true)
+    expect(visibleTexts(container)).toHaveLength(8)
     expect(foldRow()?.textContent).toBe('show less')
-    expect(foldRow()?.getAttribute('aria-expanded')).toBe('true')
+    expect(foldRow()?.previousElementSibling).toBe(container.children[7])
 
-    foldRow()?.click()
+    fold.setExpanded(false)
     expect(visibleTexts(container)).toHaveLength(5)
-    expect(foldRow()?.textContent).toBe('show 19 more')
+    expect(foldRow()?.textContent).toBe('show 3 more')
     dispose()
   })
 
-  it('widens the same ranking cut one step at a time', () => {
-    const container = mountSidebar(12)
-    const times: Record<string, number> = { w0: 100, w1: 90, w2: 80, w3: 70, w10: 200, w11: 60 }
-    const { fold } = makeFold({ recency: key => times[key] })
+  it('routes the fold row click to the owner', () => {
+    mountSidebar(8)
+    const { fold, onToggle } = makeFold()
     const dispose = fold.start()
-    // The first window is the ranking's own five, in the shell's render order.
-    expect(visibleTexts(container)).toEqual(['project 0', 'project 1', 'project 2', 'project 3', 'project 10'])
-    expect(foldRow()?.textContent).toBe('show 7 more')
-
     foldRow()?.click()
-    expect(visibleTexts(container)).toHaveLength(12)
-    expect(foldRow()?.textContent).toBe('show less')
+    expect(onToggle).toHaveBeenCalledTimes(1)
     dispose()
   })
 
@@ -552,11 +541,11 @@ describe('the ungrouped bucket', () => {
     dispose()
   })
 
-  it('reveals every group, leaving the bucket last', () => {
+  it('unfolds every group, leaving the bucket last', () => {
     const container = mountSidebar(8, { ungrouped: true })
     const { fold } = makeFold({ recency: recencyFrom({ w0: 900, w1: 800, w2: 700, w3: 600, w4: 500 }) })
     const dispose = fold.start()
-    foldRow()?.click()
+    fold.setExpanded(true)
     expect(visibleTexts(container)).toHaveLength(9)
     expect(foldRow()?.previousElementSibling).toBe(container.children[8])
     dispose()

@@ -7,10 +7,7 @@
  *   away, so the column's space goes to 最近 instead of to project rows.
  * - **List fold** (the trailing row): the list keeps {@link WorkspaceFoldOptions.limit}
  *   groups — the ones holding the newest history — and holds the rest behind
- *   one row, revealing {@link FOLD_STEP} more of them per click, one step at a
- *   time, until every group is back and the row offers to fold the list down
- *   again. It is the same control the session rows carry one level down, so the
- *   column's two folds step the same way.
+ *   one row.
  *
  * The ranking is what keeps the column honest about being "recently used": a
  * group that now holds only old history loses its place to a group that was
@@ -45,8 +42,6 @@ export declare const FOLD_ROW_ATTRIBUTE = "data-dsh-recent-fold";
 export declare const SECTION_COLLAPSED_ATTRIBUTE = "data-dsh-recent-section";
 /** Owner attribute on the injected chevron inside the section header. */
 export declare const SECTION_CHEVRON_ATTRIBUTE = "data-dsh-recent-section-chevron";
-/** Groups one expansion of the fold row reveals — the same step the session folds take. */
-export declare const FOLD_STEP = 10;
 /** Copy for the fold row under both states. */
 export interface FoldLabels {
     /** Label while folded; `hidden` is the number of items the fold holds back. */
@@ -56,7 +51,7 @@ export interface FoldLabels {
 }
 /** Construction options for {@link WorkspaceListFold}. */
 export interface WorkspaceFoldOptions {
-    /** Groups the first window keeps, before any expansion step (ignored while collapsed). */
+    /** Groups kept visible while the list is folded (ignored while collapsed). */
     limit: number;
     /** Current copy; re-read on every application, so a locale switch needs no re-install. */
     labels: FoldLabels;
@@ -66,6 +61,8 @@ export interface WorkspaceFoldOptions {
      * every application, so the owner can swap the map as the catalog moves.
      */
     recency: (key: string) => number | undefined;
+    /** Called when the operator clicks the toggle row. */
+    onToggle: () => void;
     /** Called when the operator clicks the section header chevron. */
     onToggleSection: () => void;
 }
@@ -133,8 +130,7 @@ export declare function splitByRecency<T>(groups: readonly T[], limit: number, e
 export declare class WorkspaceListFold {
     private readonly options;
     private collapsed;
-    /** Groups the window currently keeps; starts at the fold limit and steps up from there. */
-    private revealed;
+    private expanded;
     private observer;
     private scheduled;
     private column;
@@ -142,7 +138,7 @@ export declare class WorkspaceListFold {
     private readonly chevron;
     private readonly button;
     /**
-     * @param options - fold limit, copy, the group ranking, and the section toggle callback.
+     * @param options - fold limit, copy, the group ranking, and the two toggle callbacks.
      */
     constructor(options: WorkspaceFoldOptions);
     /**
@@ -156,10 +152,10 @@ export declare class WorkspaceListFold {
      */
     setCollapsed(collapsed: boolean): void;
     /**
-     * Fold the list back to its first window: the column was reopened, or the
-     * owner wants the folded default back. The window is a look, not a setting.
+     * Fold or unfold the list.
+     * @param expanded - true shows every group, false keeps the fold limit.
      */
-    reset(): void;
+    setExpanded(expanded: boolean): void;
     /**
      * Re-rank the groups: the session catalog moved on, so which groups the fold
      * keeps while folded may have changed. The owner calls this after installing
@@ -185,13 +181,6 @@ export declare class WorkspaceListFold {
      * @returns the group's newest history time.
      */
     private groupRecency;
-    /**
-     * One click on the fold row: reveal the next step of groups, or fold the list
-     * back to its first window once every group is back. The next window is cut
-     * from the ranking as it stands at click time, so a step only widens the same
-     * cut — it never reveals a group the fold would have hidden at the new size.
-     */
-    private advance;
     /**
      * Adopt the shell's section header: mark it as the collapse toggle, place the
      * chevron, and route clicks on it to the owner. The header's own buttons (view

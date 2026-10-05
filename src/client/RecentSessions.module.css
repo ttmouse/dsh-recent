@@ -282,14 +282,12 @@ body > div:has(> [data-recent-stale]) {
   line-height: 18px;
 }
 
-/* The two fold rows this plugin injects into the shell's DOM — the workspace
-   list's ("展开其余 N 个工作区…") and one per project's session list ("展开其余 N
-   个会话…") — carry owner attributes instead of hashed classes. Row metrics
-   follow the shell's own session overflow control (28px, radius 8), but the type
-   is the section's own: 14px like the section header, in a dimmed tertiary
-   (tertiary at ~37%) that reads as a control, not as a session row. */
-[data-dsh-recent-fold],
-[data-dsh-recent-session-fold] {
+/* The workspace list's fold row ("展开其余 N 个工作区…"), injected into the
+   shell's DOM and carrying the owner attribute instead of a hashed class. Row
+   metrics follow the shell's own session overflow control (28px, radius 8), but
+   the type is the section's own: 14px like the section header, in a dimmed
+   tertiary (tertiary at ~37%) that reads as a control, not as a session row. */
+[data-dsh-recent-fold] {
   flex: none;
   width: 100%;
   height: 28px;
@@ -303,8 +301,7 @@ body > div:has(> [data-recent-stale]) {
   font-size: 14px;
 }
 
-[data-dsh-recent-fold]:hover,
-[data-dsh-recent-session-fold]:hover {
+[data-dsh-recent-fold]:hover {
   background: transparent;
   color: var(--dsw-alias-label-secondary);
 }

@@ -44,7 +44,6 @@ import type { RecentPending, RecentRow } from './rows.ts'
 import { deriveRecentRows, FOLD_LIMIT, growWindow, RECENT_PAGE_SIZE } from './rows.ts'
 import type { RecentActions } from './sessionActions.ts'
 import { groupRecency, WorkspaceListFold, workspaceListContainer } from './workspaceFold.ts'
-import { SessionListFold } from './sessionFold.ts'
 import { NS } from './locales.ts'
 import css from './RecentSessions.module.css'
 
@@ -439,6 +438,7 @@ export function RecentSessions(
   const now = useNow()
   const [recentFolded, setRecentFolded] = useState(false)
   const [rendered, setRendered] = useState(RECENT_PAGE_SIZE)
+  const [workspaceExpanded, setWorkspaceExpanded] = useState(false)
   const [workspaceCollapsed, setWorkspaceCollapsed] = useState(false)
   // The row that owns the hover, and with it the one card allowed to paint.
   // Only ever moved forward, never cleared on the way out of the list: a card
@@ -486,9 +486,7 @@ export function RecentSessions(
   recencyRef.current = recency
 
   // A fresh fold per locale binding: the layer re-reads its copy on every
-  // application, so no stale labels survive a language switch. The layer owns
-  // the window itself (five folders, ten more per click), the way the
-  // per-project fold below does.
+  // application, so no stale labels survive a language switch.
   const foldOptions = useMemo(() => ({
     limit: FOLD_LIMIT,
     labels: {
@@ -496,42 +494,28 @@ export function RecentSessions(
       collapse: t('fold.collapse'),
     },
     recency: (key: string) => recencyRef.current.get(key),
+    onToggle: () => { setWorkspaceExpanded(current => !current) },
     onToggleSection: () => { setWorkspaceCollapsed(current => !current) },
   }), [t])
   const fold = useMemo(() => new WorkspaceListFold(foldOptions), [foldOptions])
   useEffect(() => fold.start(), [fold])
+  useEffect(() => { fold.setExpanded(workspaceExpanded) }, [fold, workspaceExpanded])
   useEffect(() => { fold.setCollapsed(workspaceCollapsed) }, [fold, workspaceCollapsed])
   // New history moves groups in and out of the fold, so every catalog change
   // re-ranks the list; without this the folded column would keep yesterday's
   // five until some unrelated mutation happened to re-apply the fold.
   useEffect(() => { fold.refresh() }, [fold, recency])
 
-  // The per-project fold: five conversations per project, ten more per click.
-  // A fresh layer per locale binding, the way the workspace fold is rebuilt.
-  const sessionFoldOptions = useMemo(() => ({
-    labels: {
-      expand: (hidden: number) => t('fold.expandSessions', { n: hidden }),
-      collapse: t('fold.collapse'),
-    },
-  }), [t])
-  const sessionFold = useMemo(() => new SessionListFold(sessionFoldOptions), [sessionFoldOptions])
-  useEffect(() => sessionFold.start(), [sessionFold])
-  // A project's total, its label, and which conversation is current all move
-  // with the catalog; the layer reads them back off the DOM it owns, so it only
-  // needs to know that something moved.
-  useEffect(() => { sessionFold.refresh() }, [sessionFold, rows, workspaces])
-
   // Showing the column again restores the folded default, the way the Codex
   // sidebar does: the expanded state is a look, not a setting. The recent list
-  // starts over from its first page, and the workspace fold from its first
-  // window, for the same reason.
+  // starts over from its first page for the same reason.
   useEffect(() => {
     if (!wide) return
     setRecentFolded(false)
     setRendered(RECENT_PAGE_SIZE)
-    fold.reset()
+    setWorkspaceExpanded(false)
     setWorkspaceCollapsed(false)
-  }, [wide, fold])
+  }, [wide])
 
   // Reaching the end of the rendered window loads the next page of older
   // sessions. The marker sits at that end and the column's own scroller is the

@@ -7,7 +7,6 @@ export const NS = 'recent'
 export type RecentKey =
   | 'section.recent'
   | 'fold.expandWorkspaces'
-  | 'fold.expandSessions'
   | 'fold.collapse'
   | 'row.open'
   | 'row.pinned'
@@ -55,7 +54,6 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 export const zh: Record<RecentKey, string> = {
   'section.recent': '最近',
   'fold.expandWorkspaces': '展开其余 {n} 个工作区',
-  'fold.expandSessions': '展开其余 {n} 个会话',
   'fold.collapse': '收起',
   'row.open': '打开会话“{name}”',
   'row.pinned': '已置顶',
@@ -93,7 +91,6 @@ export const zh: Record<RecentKey, string> = {
 export const en: Record<RecentKey, string> = {
   'section.recent': 'Recent',
   'fold.expandWorkspaces': 'Show {n} more workspaces',
-  'fold.expandSessions': 'Show {n} more sessions',
   'fold.collapse': 'Show less',
   'row.open': 'Open session “{name}”',
   'row.pinned': 'Pinned',
