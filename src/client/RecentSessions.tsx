@@ -35,8 +35,8 @@ import { createPortal } from 'react-dom'
 import type { ReactNode, RefObject } from 'react'
 import {
   Button, HoverCard, IconArchiveOutlineRegular, IconBranchOutlineRegular, IconChevronRightOutlineRegular,
-  IconEllipsisOutlineRegular, IconFolderCloseRegular, IconPinFillRegular, IconPinOutlineRegular, Menu, Modal,
-  StateDot, Tooltip, relativeTime,
+  IconEllipsisOutlineRegular, IconFolderCloseRegular, IconPinFillRegular, IconPinOutlineRegular,
+  IconSlidersTwoOutlineRegular, Menu, Modal, StateDot, Tooltip, relativeTime,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale, PropsRuntime, TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
@@ -45,6 +45,7 @@ import { deriveRecentRows, FOLD_LIMIT, growWindow, RECENT_PAGE_SIZE } from './ro
 import type { RecentActions } from './sessionActions.ts'
 import { groupRecency, WorkspaceListFold, workspaceListContainer } from './workspaceFold.ts'
 import { NS } from './locales.ts'
+import { loadShowWorkspace, saveShowWorkspace } from './viewOptions.ts'
 import css from './RecentSessions.module.css'
 
 /** Refresh cadence of the trailing relative-time labels. */
@@ -235,6 +236,61 @@ function RecentRowCard({ row, t, now, stale }: {
 }
 
 /**
+ * The section's view-options menu: the workspace section header's own sliders
+ * button and menu, borrowed element for element — the 28px icon button, the
+ * dense portalled card aligned to its end, a heading row naming the menu, and
+ * one checkable row per option with the check marking what is on. Selecting
+ * the checked row clears it: these are independent switches, not a radio
+ * group, so every row toggles its own fact.
+ * @param props.showWorkspace - whether rows carry the project-name line.
+ * @param props.onToggleWorkspace - flip the project-name line.
+ * @param props.t - locale seat.
+ * @returns the menu.
+ */
+function ViewOptionsMenu({ showWorkspace, onToggleWorkspace, t }: {
+  showWorkspace: boolean
+  onToggleWorkspace: () => void
+  t: RecentTranslate
+}): ReactNode {
+  const [open, setOpen] = useState(false)
+  return (
+    <Menu
+      open={open}
+      onClose={() => { setOpen(false) }}
+      items={[
+        { type: 'label', id: 'view.label', text: t('view.options') },
+        {
+          id: 'show-workspace',
+          label: t('view.showWorkspace'),
+          icon: <IconFolderCloseRegular size={14} />,
+        },
+      ]}
+      selectedIds={showWorkspace ? ['show-workspace'] : []}
+      onSelect={(id) => {
+        setOpen(false)
+        if (id === 'show-workspace') onToggleWorkspace()
+      }}
+      align="end"
+      dense
+      portal
+      listClassName={css.viewMenu}
+      anchor={
+        <Tooltip label={t('view.options')} side="bottom" align="end" delayMs={500}>
+          <button
+            type="button"
+            className={css.headerButton}
+            aria-label={t('view.options')}
+            onClick={() => { setOpen(current => !current) }}
+          >
+            <IconSlidersTwoOutlineRegular />
+          </button>
+        </Tooltip>
+      }
+    />
+  )
+}
+
+/**
  * One session row: the shell's own session row — leading state cell, title, the
  * age (or the waiting interaction's compact label), the resting pin marker —
  * with the age's place taken by the row's actions while the row is hovered or
@@ -258,9 +314,10 @@ function RecentRowCard({ row, t, now, stale }: {
  * @param props.onArchive - archive this row, raising the confirmation when the Host refuses.
  * @param props.stale - whether another row currently owns the hover.
  * @param props.onHover - announce that this row took the hover.
+ * @param props.showWorkspace - whether the row carries the project-name line.
  * @returns the row element.
  */
-function RecentRowItem({ row, now, t, actions, onArchive, stale, onHover }: {
+function RecentRowItem({ row, now, t, actions, onArchive, stale, onHover, showWorkspace }: {
   row: RecentRow
   now: number
   t: RecentTranslate
@@ -268,6 +325,7 @@ function RecentRowItem({ row, now, t, actions, onArchive, stale, onHover }: {
   onArchive: (row: RecentRow) => void
   stale: boolean
   onHover: () => void
+  showWorkspace: boolean
 }): ReactNode {
   const state = rowState(row)
   const label = statusLabel(row, t)
@@ -283,6 +341,7 @@ function RecentRowItem({ row, now, t, actions, onArchive, stale, onHover }: {
             className={rowClass}
             role="treeitem"
             tabIndex={0}
+            data-workspace={showWorkspace ? '' : undefined}
             aria-label={t('row.open', { name: row.title })}
             aria-selected={row.current}
             onClick={() => { actions.open(row.id) }}
@@ -358,6 +417,7 @@ function RecentRowItem({ row, now, t, actions, onArchive, stale, onHover }: {
                 </button>
               </Tooltip>
             </span>
+            {showWorkspace && <span className={css.workspace}>{row.workspace}</span>}
           </div>
         }
         content={<RecentRowCard row={row} t={t} now={now} stale={stale} />}
@@ -438,6 +498,9 @@ export function RecentSessions(
   const now = useNow()
   const [recentFolded, setRecentFolded] = useState(false)
   const [rendered, setRendered] = useState(RECENT_PAGE_SIZE)
+  // The project-name line is a setting rather than a look, so unlike the folds
+  // below it survives the column closing and the page reloading.
+  const [showWorkspace, setShowWorkspace] = useState(() => loadShowWorkspace())
   const [workspaceExpanded, setWorkspaceExpanded] = useState(false)
   const [workspaceCollapsed, setWorkspaceCollapsed] = useState(false)
   // The row that owns the hover, and with it the one card allowed to paint.
@@ -538,16 +601,28 @@ export function RecentSessions(
 
   const body = (
     <div ref={section} className={css.section} data-slot="sidebar.recent.section">
-      <button
-        type="button"
-        className={css.header}
-        aria-expanded={!recentFolded}
-        aria-label={t('section.recent')}
-        onClick={() => { setRecentFolded(current => !current) }}
-      >
-        {t('section.recent')}
-        <IconChevronRightOutlineRegular className={recentFolded ? css.chevron : `${css.chevron} ${css.chevronOpen}`} />
-      </button>
+      <div className={css.header}>
+        <button
+          type="button"
+          className={css.headerToggle}
+          aria-expanded={!recentFolded}
+          aria-label={t('section.recent')}
+          onClick={() => { setRecentFolded(current => !current) }}
+        >
+          {t('section.recent')}
+          <IconChevronRightOutlineRegular className={recentFolded ? css.chevron : `${css.chevron} ${css.chevronOpen}`} />
+        </button>
+        <ViewOptionsMenu
+          showWorkspace={showWorkspace}
+          onToggleWorkspace={() => {
+            setShowWorkspace(current => {
+              saveShowWorkspace(!current)
+              return !current
+            })
+          }}
+          t={t}
+        />
+      </div>
       {!recentFolded && <ul className={css.list}>
         {visibleRows.map(row => (
           <RecentRowItem
@@ -561,6 +636,7 @@ export function RecentSessions(
             onHover={() => {
               setHoveredID(current => current === row.id ? current : row.id)
             }}
+            showWorkspace={showWorkspace}
           />
         ))}
         {visibleRows.length < rows.length && (

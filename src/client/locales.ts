@@ -6,6 +6,8 @@ export const NS = 'recent'
 /** The recent-section dictionary key set (the source of truth for both locales). */
 export type RecentKey =
   | 'section.recent'
+  | 'view.options'
+  | 'view.showWorkspace'
   | 'fold.expandWorkspaces'
   | 'fold.collapse'
   | 'row.open'
@@ -53,6 +55,8 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
  */
 export const zh: Record<RecentKey, string> = {
   'section.recent': '最近',
+  'view.options': '视图选项',
+  'view.showWorkspace': '显示项目名称',
   'fold.expandWorkspaces': '展开其余 {n} 个工作区',
   'fold.collapse': '收起',
   'row.open': '打开会话“{name}”',
@@ -90,6 +94,8 @@ export const zh: Record<RecentKey, string> = {
 /** English dictionary, checked complete against the zh key set. */
 export const en: Record<RecentKey, string> = {
   'section.recent': 'Recent',
+  'view.options': 'View options',
+  'view.showWorkspace': 'Show project names',
   'fold.expandWorkspaces': 'Show {n} more workspaces',
   'fold.collapse': 'Show less',
   'row.open': 'Open session “{name}”',

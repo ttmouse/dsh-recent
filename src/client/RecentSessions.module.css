@@ -19,9 +19,9 @@
   padding: 12px 0 2px;
 }
 
-/* The section header is the collapse toggle, mirroring the workspace section's
-   header: same height, type, and color, plus the same disclosure triangle and
-   the same open/closed rotation. */
+/* The section header row: the collapse toggle plus the view-options button,
+   laid out the way the workspace section's header lays its label out against
+   its own trailing controls (same height, gap, and inline padding). */
 .header {
   flex: none;
   display: flex;
@@ -31,15 +31,56 @@
   height: 36px;
   margin-bottom: 4px;
   padding-left: 4px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* The collapse toggle: the label with the disclosure chevron right after it,
+   stretched across the row so the view-options button lands at the far end. */
+.headerToggle {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 100%;
+  padding: 0;
   border: none;
   border-radius: 12px;
   background: transparent;
-  color: var(--dsw-alias-label-tertiary);
+  color: inherit;
+  font-family: inherit;
   font-size: 14px;
   font-weight: 400;
   line-height: 20px;
   text-align: left;
   cursor: pointer;
+}
+
+/* The header's view-options button: the shell's own 28px header icon button
+   (workspace section's sliders control), metrics and hover included. */
+.headerButton {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+}
+
+.headerButton:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+/* The view-options card: the shell's own min width for the workspace section's
+   menu, so the option rows never read as a cramped stub. */
+.viewMenu {
+  min-width: 200px;
 }
 
 /* Disclosure arrow: the shell's thin chevron trailing the label, turned a
@@ -110,6 +151,35 @@
 .rowCurrent,
 .rowMenuOpen {
   background: var(--dsw-alias-interactive-bg-hover);
+}
+
+/* Two-line mode: with the project-name line on, the row grows the way the
+   shell's search-result rows do — the title line keeps its single-line
+   metrics, and the workspace line sits beneath it. The wrap does the
+   splitting: the workspace line's full basis forces its own line. */
+.row[data-workspace] {
+  flex-wrap: wrap;
+  height: auto;
+  min-height: 44px;
+  align-content: center;
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+/* The project-name line: the search-result workspace line's own type and
+   color (12px tertiary), indented 20px to start under the title — the 16px
+   state cell plus the title's 4px inline margin. */
+.workspace {
+  flex: 0 0 100%;
+  box-sizing: border-box;
+  min-width: 0;
+  padding-left: 20px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 17px;
 }
 
 /* The leading cell: the state dot's 16x20 box, the same one the shell's session
