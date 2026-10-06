@@ -131,9 +131,24 @@ export declare const UNGROUPED_KEY = "";
  */
 export declare function groupKey(group: HTMLElement): string | undefined;
 /**
- * The session rows one group section holds, in render order. Direct-children
- * only: the group's header row and its own overflow row sit beside them, and a
- * nested group's rows belong to that group.
+ * One row's slot: the outermost element holding it that is still a direct child
+ * of the group section. The shell wraps every row in a hover-card slot
+ * (`position:relative; display:block`) instead of rendering it as the group's
+ * own child, and the group's child spacing rule gives that slot its own 2px
+ * margin — so the slot, not the row inside it, is what a fold has to hide and
+ * what an injected row has to sit beside. A row the group owns directly is its
+ * own slot.
+ * @param group - the group section owning the row.
+ * @param row - one row inside that group.
+ * @returns the direct child of the group holding the row.
+ */
+export declare function rowSlot(group: HTMLElement, row: HTMLElement): HTMLElement;
+/**
+ * The session rows one group section holds, in render order. Rows are matched
+ * wherever the shell wrapped them (its hover-card slot), but only the ones this
+ * group owns: a nested group renders inside its parent, and its rows belong to
+ * the nested group — as do the group header row and the shell's own overflow
+ * row, which carry other row keys.
  * @param group - one group section.
  * @returns the session rows, in the order the shell rendered them.
  */
@@ -260,7 +275,7 @@ export declare class WorkspaceListFold {
      * (its rows are then left exactly as the shell rendered them).
      */
     private applySessionFold;
-    /** Place one group's overflow row, writing only when its position moved. */
+    /** Place one group's overflow row behind `anchor` (the last kept row's slot). */
     private syncSessionButton;
     /** Remove one group's overflow row, if it has one. */
     private dropSessionButton;

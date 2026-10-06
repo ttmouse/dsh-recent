@@ -398,6 +398,15 @@ body > div:has(> [data-recent-stale]) {
   background: 0 0;
 }
 
+/* The row is injected as a direct child of the shell's group section, whose
+   child-spacing rule (`>*+*`) gives every row after the first a 2px lead-in.
+   The shell's own overflow control zeroes it there, so this one matches — with
+   the extra class in the selector so the reset never depends on which
+   stylesheet the browser happened to install last. */
+[class*="_groupSection"] > [data-dsh-recent-session-overflow] {
+  margin-top: 0;
+}
+
 .visuallyHidden {
   position: absolute;
   width: 1px;

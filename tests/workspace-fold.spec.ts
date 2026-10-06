@@ -5,7 +5,7 @@ import type { WorkspaceId, WorkspaceView } from '@deepseek-ai/dsh-api-workspace-
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import {
   FOLD_ROW_ATTRIBUTE, SESSION_FOLD_LIMIT, SESSION_OVERFLOW_ATTRIBUTE, WorkspaceListFold, groupKey, groupRecency,
-  groupSections, loadWorkspaceExpanded, saveWorkspaceExpanded, sessionRowId, sessionRows, splitByRecency,
+  groupSections, loadWorkspaceExpanded, rowSlot, saveWorkspaceExpanded, sessionRowId, sessionRows, splitByRecency,
   UNGROUPED_KEY, workspaceListContainer,
 } from '../src/client/workspaceFold.ts'
 
@@ -772,6 +772,116 @@ describe('sessionRows', () => {
     const rows = sessionRows(group)
     expect(rows).toHaveLength(1)
     expect(sessionRowId(rows[0] as HTMLElement)).toBe('s0')
+  })
+})
+
+/**
+ * The shell as it actually renders: every row sits inside a hover-card slot
+ * (`position:relative; display:block`, and a `>*+*` 2px lead-in of its own)
+ * rather than being a child of the group section, so a fold that reads or hides
+ * the group's children sees nothing at all.
+ */
+describe('the shell row slots', () => {
+  /** One group whose rows are each wrapped in a slot, the way the shell renders them. */
+  function mountSlottedGroup(count: number, shellOverflow?: number): { container: HTMLElement; group: HTMLElement } {
+    const container = mountSidebar(1)
+    const group = document.createElement('div')
+    group.className = 'bhn1Oq_groupSection'
+    const project = document.createElement('div')
+    project.className = 'YDXeBa_projectRow'
+    project.setAttribute('data-row-key', 'workspace:w0')
+    project.textContent = 'project 0'
+    group.append(inSlot(project))
+    for (let index = 0; index < count; index++) {
+      const row = document.createElement('div')
+      row.className = 'YDXeBa_sessionRow'
+      row.setAttribute('data-row-key', `session:s${index}`)
+      row.textContent = `session ${index}`
+      group.append(inSlot(row))
+    }
+    if (shellOverflow !== undefined) {
+      const overflow = document.createElement('button')
+      overflow.setAttribute('data-row-key', 'overflow:w0')
+      overflow.textContent = `show ${shellOverflow} more sessions`
+      group.append(overflow)
+    }
+    container.replaceChildren(group)
+    return { container, group }
+  }
+
+  /** The shell's hover-card slot around one row. */
+  function inSlot(row: HTMLElement): HTMLElement {
+    const wrapper = document.createElement('span')
+    wrapper.className = '_root_38jqx_3'
+    wrapper.append(row)
+    return wrapper
+  }
+
+  /** One group's own children as elements (the shell's slots and its own rows). */
+  function childrenOf(group: HTMLElement): HTMLElement[] {
+    return [...group.children].filter((child): child is HTMLElement => child instanceof HTMLElement)
+  }
+
+  const recency: Record<string, number> = { s0: 700, s1: 600, s2: 500, s3: 400, s4: 300, s5: 200, s6: 100 }
+
+  it('reads the rows through their slots, in render order', () => {
+    const { group } = mountSlottedGroup(3)
+    expect(sessionRows(group).map(row => sessionRowId(row))).toEqual(['s0', 's1', 's2'])
+    expect(rowSlot(group, sessionRows(group)[1] as HTMLElement)).toBe(group.children[2])
+  })
+
+  it('hides the slots, not just the rows inside them', () => {
+    const { group } = mountSlottedGroup(7)
+    const { fold } = makeFold({ sessionRecency: id => recency[id] })
+    const dispose = fold.start()
+
+    const rows = sessionRows(group)
+    expect(rows).toHaveLength(7)
+    // Slots of the two folded rows go with them: leaving an empty slot visible
+    // would keep its own 2px lead-in and space the list out anyway.
+    for (const row of rows.slice(5)) {
+      expect(row.style.display).toBe('')
+      expect(rowSlot(group, row).style.display).toBe('none')
+    }
+    const boxed = childrenOf(group).filter(child => child.style.display !== 'none')
+    expect(boxed.map(child => child.textContent)).toEqual([
+      'project 0', 'session 0', 'session 1', 'session 2', 'session 3', 'session 4', 'show 2 more conversations',
+    ])
+    dispose()
+    expect(childrenOf(group).every(child => child.style.display === '')).toBe(true)
+  })
+
+  it("leaves the shell's own overflow row as the group's single expander", () => {
+    const { group } = mountSlottedGroup(7, 9)
+    const { fold } = makeFold({ sessionRecency: id => recency[id] })
+    const dispose = fold.start()
+
+    // Two rows folded here, seven more the shell never rendered: one control
+    // offers both, and it is the shell's own.
+    expect(sessionRows(group).filter(row => rowSlot(group, row).style.display === 'none')).toHaveLength(2)
+    expect(document.querySelector(`[${SESSION_OVERFLOW_ATTRIBUTE}]`)).toBeNull()
+    const shellRow = group.querySelector('[data-row-key^="overflow:"]')
+    expect(shellRow?.textContent).toBe('show 9 more sessions')
+
+    ;(shellRow as HTMLElement).click()
+    expect(sessionRows(group).every(row => rowSlot(group, row).style.display === '')).toBe(true)
+    dispose()
+  })
+
+  it("keeps a nested group's rows out of the parent", () => {
+    const { group } = mountSlottedGroup(2)
+    const nested = document.createElement('div')
+    nested.className = 'bhn1Oq_groupSection'
+    const header = document.createElement('div')
+    header.setAttribute('data-row-key', 'workspace:w1')
+    const row = document.createElement('div')
+    row.setAttribute('data-row-key', 'session:n0')
+    row.textContent = 'nested session'
+    nested.append(header, inSlot(row))
+    group.append(nested)
+
+    expect(sessionRows(group).map(item => sessionRowId(item))).toEqual(['s0', 's1'])
+    expect(sessionRows(nested).map(item => sessionRowId(item))).toEqual(['n0'])
   })
 })
 

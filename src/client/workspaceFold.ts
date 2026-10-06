@@ -218,16 +218,50 @@ const SESSION_ROW_KEY = 'session:'
 const OVERFLOW_ROW_KEY = 'overflow:'
 
 /**
- * The session rows one group section holds, in render order. Direct-children
- * only: the group's header row and its own overflow row sit beside them, and a
- * nested group's rows belong to that group.
+ * One row's slot: the outermost element holding it that is still a direct child
+ * of the group section. The shell wraps every row in a hover-card slot
+ * (`position:relative; display:block`) instead of rendering it as the group's
+ * own child, and the group's child spacing rule gives that slot its own 2px
+ * margin — so the slot, not the row inside it, is what a fold has to hide and
+ * what an injected row has to sit beside. A row the group owns directly is its
+ * own slot.
+ * @param group - the group section owning the row.
+ * @param row - one row inside that group.
+ * @returns the direct child of the group holding the row.
+ */
+export function rowSlot(group: HTMLElement, row: HTMLElement): HTMLElement {
+  let slot = row
+  while (slot.parentElement !== null && slot.parentElement !== group) slot = slot.parentElement
+  return slot.parentElement === group ? slot : row
+}
+
+/**
+ * The session rows one group section holds, in render order. Rows are matched
+ * wherever the shell wrapped them (its hover-card slot), but only the ones this
+ * group owns: a nested group renders inside its parent, and its rows belong to
+ * the nested group — as do the group header row and the shell's own overflow
+ * row, which carry other row keys.
  * @param group - one group section.
  * @returns the session rows, in the order the shell rendered them.
  */
 export function sessionRows(group: HTMLElement): HTMLElement[] {
-  return [...group.children].filter(
+  return [...group.querySelectorAll<HTMLElement>('[data-row-key]')].filter(
+    row => (row.getAttribute('data-row-key') ?? '').startsWith(SESSION_ROW_KEY)
+      && row.closest(`[class*="${GROUP_SECTION_FRAGMENT}"]`) === group,
+  )
+}
+
+/**
+ * The shell's own overflow row of one group, the control that raises the
+ * shell's idle-session quota. It renders as a direct child of the group, after
+ * the rows, and only while the shell itself holds sessions back.
+ * @param group - one group section.
+ * @returns the shell's overflow row, or undefined when the shell shows every row.
+ */
+function shellOverflowRow(group: HTMLElement): HTMLElement | undefined {
+  return [...group.children].find(
     (child): child is HTMLElement =>
-      child instanceof HTMLElement && (child.getAttribute('data-row-key') ?? '').startsWith(SESSION_ROW_KEY),
+      child instanceof HTMLElement && (child.getAttribute('data-row-key') ?? '').startsWith(OVERFLOW_ROW_KEY),
   )
 }
 
@@ -445,7 +479,7 @@ export class WorkspaceListFold {
     if (container !== undefined) {
       for (const group of groupSections(container)) {
         setHidden(group, false)
-        for (const row of sessionRows(group)) setHidden(row, false)
+        for (const row of sessionRows(group)) setHidden(rowSlot(group, row), false)
       }
     }
     for (const button of this.sessionButtons.values()) button.remove()
@@ -574,8 +608,12 @@ export class WorkspaceListFold {
   private applySessionFold(group: HTMLElement): string | undefined {
     const key = groupKey(group)
     const rows = sessionRows(group)
+    // Rows live inside the shell's hover-card slots; the slot is the box the
+    // fold hides and the neighbour an injected row must follow, so that a
+    // hidden row leaves no spacing of its own behind.
+    const slots = new Map(rows.map(row => [row, rowSlot(group, row)]))
     if (key === undefined || rows.length <= SESSION_FOLD_LIMIT || this.expandedGroups.has(key)) {
-      for (const row of rows) setHidden(row, false)
+      for (const row of rows) setHidden(slots.get(row) ?? row, false)
       this.dropSessionButton(key)
       return key
     }
@@ -586,15 +624,24 @@ export class WorkspaceListFold {
       })
       .sort((a, b) => (b.at !== a.at ? b.at - a.at : a.index - b.index))
     const kept = new Set(ranked.slice(0, SESSION_FOLD_LIMIT).map(entry => entry.row))
-    for (const row of rows) setHidden(row, !kept.has(row))
+    for (const row of rows) setHidden(slots.get(row) ?? row, !kept.has(row))
     // The row trails the last session the fold keeps, in render order, so it
     // reads as the boundary of everything the group holds back.
-    const anchor = ranked.filter(entry => kept.has(entry.row)).at(-1)?.row
-    if (anchor !== undefined) this.syncSessionButton(key, anchor, rows.length - SESSION_FOLD_LIMIT)
+    const anchorRow = ranked.filter(entry => kept.has(entry.row)).at(-1)?.row
+    const anchor = anchorRow === undefined ? undefined : slots.get(anchorRow)
+    if (anchor === undefined) return key
+    // The shell's own overflow row already offers this group's held-back rows
+    // (clicking it unfolds this fold too, through the document listener), so
+    // injecting a second one beside it would offer the same thing twice.
+    if (shellOverflowRow(group) !== undefined) {
+      this.dropSessionButton(key)
+      return key
+    }
+    this.syncSessionButton(key, anchor, rows.length - SESSION_FOLD_LIMIT)
     return key
   }
 
-  /** Place one group's overflow row, writing only when its position moved. */
+  /** Place one group's overflow row behind `anchor` (the last kept row's slot). */
   private syncSessionButton(key: string, anchor: HTMLElement, hiddenCount: number): void {
     let button = this.sessionButtons.get(key)
     if (button === undefined) {

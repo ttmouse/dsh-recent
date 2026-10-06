@@ -67,6 +67,13 @@ the column carries from the project tree into history.
   or which has none at all — only appears when a slot is left over. Expanding is a
   temporary state, so collapsing the sidebar and reopening it returns to the
   folded default, as in Codex.
+- **Five conversations per project** — a project's session rows fold to their five
+  newest by the session's own last activity, **whatever their live state**:
+  running, waiting, and blank rows take no extra slot here (the shell's own quota
+  exempts them; this layer does not, so a running session older than the fifth
+  newest folds like any other). What is left over waits behind a single row — the
+  shell's own `Show N more sessions` when it renders one, otherwise an identical
+  row this plugin injects — and one click unfolds the whole group.
 - **Native look** — `--dsw-*` semantic tokens plus the shell's own `StateDot`
   and chevron icons, so light/dark and every brand theme follow the shell; the
   fold row matches the shell's own session overflow control exactly.
@@ -202,6 +209,19 @@ the committed `lib/` drifts from a fresh build.
   component, so collapsing the sidebar and reopening it (`wide` false → true)
   returns the workspace list to the five-row default and the recent list to its
   first page.
+- **How the per-project session fold works** — the shell does not render session
+  rows as the group's own children: each one sits inside its own hover-card slot
+  (a `position:relative; display:block` span that carries a 2px lead-in of its
+  own). The fold therefore finds rows by their `data-row-key="session:<id>"` and
+  hides and restores the **slot**, because hiding the row alone would leave the
+  slot's spacing behind; its own overflow row is inserted after the last kept
+  row's slot, on the same level and with the same metrics as the shell's own
+  overflow control (`margin-top` zeroed like it). Each group keeps exactly one
+  expander: when the shell already renders `Show N more sessions`, no second row
+  is injected, and clicking the shell's row unfolds both layers at once (the
+  plugin listens for that `data-row-key` on the document). Ranking reads the
+  session catalog's own timestamps, so a row the catalog does not know yet ranks
+  last.
 - **The section lives inside the list's scroll area** — it is portalled into the
   shell's own scrolling container (the workspace tree's `overflow-y: auto` list)
   as that column's last content. So there is exactly one scrollbar: scrolling
@@ -241,6 +261,14 @@ the committed `lib/` drifts from a fresh build.
   stays the list's own (newest first,
   plus manual ordering); the plugin does not re-sort by recent activity, which
   would require changing the shell's list order upstream.
+- **The session fold depends on the shell's DOM too** — rows are found by
+  `data-row-key="session:<id>"` and attributed by `_groupSection` (a nested group
+  keeps its own rows); if the shell drops those row keys or restructures the
+  slots, the session fold silently falls back to the shell's own quota (five idle
+  sessions plus its running/blank exemptions) instead of failing loudly. Note
+  also that the shell's own row counts only what the shell left unrendered, so
+  unfolding it shows the rows this fold holds back a little earlier than it
+  promises.
 - **One page at a time** — 20 rows render first and each scroll appends 20
   more; with a lot of history, reaching the oldest session means scrolling to the
   end, and there is no page number or jump target.
