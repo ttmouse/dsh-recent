@@ -137,6 +137,8 @@ export declare class WorkspaceListFold {
     private header;
     private readonly chevron;
     private readonly button;
+    /** Stable header-click handler, so {@link dispose} can always remove it. */
+    private readonly onHeaderClick;
     /**
      * @param options - fold limit, copy, the group ranking, and the two toggle callbacks.
      */

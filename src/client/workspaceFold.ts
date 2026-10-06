@@ -260,6 +260,8 @@ export class WorkspaceListFold {
   private header: HTMLElement | undefined
   private readonly chevron: SVGSVGElement
   private readonly button: HTMLButtonElement
+  /** Stable header-click handler, so {@link dispose} can always remove it. */
+  private readonly onHeaderClick = (): void => { this.options.onToggleSection() }
 
   /**
    * @param options - fold limit, copy, the group ranking, and the two toggle callbacks.
@@ -333,6 +335,7 @@ export class WorkspaceListFold {
     // the portal's nodes, so tearing them out here would leave React updating a
     // detached tree.
     if (this.header?.isConnected === true) {
+      this.header.removeEventListener('click', this.onHeaderClick)
       this.header.removeAttribute(SECTION_COLLAPSED_ATTRIBUTE)
       this.header.removeAttribute('aria-expanded')
       this.header.style.cursor = ''
@@ -437,7 +440,7 @@ export class WorkspaceListFold {
       header.setAttribute('role', 'button')
       header.style.cursor = 'pointer'
       header.style.userSelect = 'none'
-      header.addEventListener('click', () => { this.options.onToggleSection() })
+      header.addEventListener('click', this.onHeaderClick)
     }
     const collapsedState = String(this.collapsed)
     if (header.getAttribute(SECTION_COLLAPSED_ATTRIBUTE) !== collapsedState) {
