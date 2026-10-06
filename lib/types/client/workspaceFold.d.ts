@@ -36,6 +36,20 @@
 import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client';
 import type { WorkspaceView } from '@deepseek-ai/dsh-api-workspace-controller/client';
 import type { SessionId } from '@deepseek-ai/dsh-session/types';
+/**
+ * Read the stored unfolded choice.
+ * @param store - the storage to read (the browser's local store, or a test double).
+ * @returns whether the list should render unfolded; anything but the exact on
+ * value degrades to the folded default.
+ */
+export declare function loadWorkspaceExpanded(store?: Pick<Storage, 'getItem'>): boolean;
+/**
+ * Store the unfolded choice. A failed write (private mode, quota) is not an
+ * error the section can act on — the choice still holds for this visit.
+ * @param expanded - whether the list should render unfolded.
+ * @param store - the storage to write (the browser's local store, or a test double).
+ */
+export declare function saveWorkspaceExpanded(expanded: boolean, store?: Pick<Storage, 'setItem'>): void;
 /** Owner attribute on the injected toggle row (selecting by class would depend on our own hash). */
 export declare const FOLD_ROW_ATTRIBUTE = "data-dsh-recent-fold";
 /** Owner attribute on the section header, carrying its collapse state. */

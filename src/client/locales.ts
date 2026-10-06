@@ -9,6 +9,7 @@ export type RecentKey =
   | 'view.options'
   | 'view.showWorkspace'
   | 'fold.expandWorkspaces'
+  | 'fold.expandSessions'
   | 'fold.collapse'
   | 'row.open'
   | 'row.pinned'
@@ -58,6 +59,7 @@ export const zh: Record<RecentKey, string> = {
   'view.options': '视图选项',
   'view.showWorkspace': '显示项目名称',
   'fold.expandWorkspaces': '展开其余 {n} 个工作区',
+  'fold.expandSessions': '展开其余 {n} 个对话',
   'fold.collapse': '收起',
   'row.open': '打开会话“{name}”',
   'row.pinned': '已置顶',
@@ -97,6 +99,7 @@ export const en: Record<RecentKey, string> = {
   'view.options': 'View options',
   'view.showWorkspace': 'Show project names',
   'fold.expandWorkspaces': 'Show {n} more workspaces',
+  'fold.expandSessions': 'Show {n} more conversations',
   'fold.collapse': 'Show less',
   'row.open': 'Open session “{name}”',
   'row.pinned': 'Pinned',

@@ -1,15 +1,15 @@
 /**
  * Persistence for the section's view options.
  *
- * A view option is a setting, not a look: unlike the section's folds — which
- * reset every time the column re-shows, because "expanded" is a state of the
- * moment — the choice to name each row's project survives reloads and browser
- * restarts. The sidebar column is browser-local chrome, so the browser's own
+ * A view option is a setting, not a look: the choice to name each row's project
+ * survives reloads and browser restarts, and so does the workspace list's
+ * unfolded choice (held alongside this key in ./workspaceFold.ts). The sidebar
+ * column is browser-local chrome, so the browser's own
  * store is the right registry; the shell's account-level settings would carry
  * the choice across machines that never shared the list's look anyway.
  */
 
-/** The one key this plugin owns in the browser's local store. */
+/** The local-store key holding the project-line choice. */
 const STORE_KEY = 'dsh-recent:view.showWorkspace'
 
 /**

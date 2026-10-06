@@ -19,8 +19,9 @@
  * (`useSessions`/`useSessionStatus`/`useWorkspaces`), and the actions a row
  * performs arrive through the registration's injected face
  * ({@link RecentActions}). A 56px rail has no room for a list, so the section
- * renders only while the column is wide — and re-showing the column returns the
- * workspace list to its folded default and this list to its first page.
+ * renders only while the column is wide — and re-showing the column returns
+ * this list to its first page, while the workspace list's unfolded choice is
+ * kept (it is a setting, held in the browser's local store).
  *
  * A row is the shell's own session row, element for element: the 16px leading
  * cell holding the live-state dot, the title, the trailing age (or the compact
@@ -43,7 +44,7 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { RecentPending, RecentRow } from './rows.ts'
 import { deriveRecentRows, FOLD_LIMIT, growWindow, RECENT_PAGE_SIZE } from './rows.ts'
 import type { RecentActions } from './sessionActions.ts'
-import { groupRecency, WorkspaceListFold, workspaceListContainer } from './workspaceFold.ts'
+import { groupRecency, loadWorkspaceExpanded, saveWorkspaceExpanded, WorkspaceListFold, workspaceListContainer } from './workspaceFold.ts'
 import { NS } from './locales.ts'
 import { loadShowWorkspace, saveShowWorkspace } from './viewOptions.ts'
 import css from './RecentSessions.module.css'
@@ -501,7 +502,12 @@ export function RecentSessions(
   // The project-name line is a setting rather than a look, so unlike the folds
   // below it survives the column closing and the page reloading.
   const [showWorkspace, setShowWorkspace] = useState(() => loadShowWorkspace())
-  const [workspaceExpanded, setWorkspaceExpanded] = useState(false)
+  // Which groups show is a setting, not a look: the operator asked to see every
+  // project, so the choice is restored from the local store and survives both
+  // the column closing and the page reloading. The section's own collapse is a
+  // state of the moment and comes back open.
+  const [workspaceExpanded, setWorkspaceExpanded] = useState(() => loadWorkspaceExpanded())
+  useEffect(() => { saveWorkspaceExpanded(workspaceExpanded) }, [workspaceExpanded])
   const [workspaceCollapsed, setWorkspaceCollapsed] = useState(false)
   // The row that owns the hover, and with it the one card allowed to paint.
   // Only ever moved forward, never cleared on the way out of the list: a card
@@ -548,6 +554,20 @@ export function RecentSessions(
   const recencyRef = useRef(recency)
   recencyRef.current = recency
 
+  // The per-group session fold ranks rows by the session catalog's own history
+  // time, whatever the row's live state — strict newest-first, no exemptions.
+  const sessionRecencyRef = useRef(new Map<SessionId, number>())
+  sessionRecencyRef.current = useMemo(() => {
+    const newest = new Map<SessionId, number>()
+    for (const id of list.ids) {
+      const session = list.byId[id]
+      if (session === undefined) continue
+      if (session.origin === 'subagent') continue
+      newest.set(id, session.updatedAt)
+    }
+    return newest
+  }, [list])
+
   // A fresh fold per locale binding: the layer re-reads its copy on every
   // application, so no stale labels survive a language switch.
   const foldOptions = useMemo(() => ({
@@ -555,8 +575,10 @@ export function RecentSessions(
     labels: {
       expand: (hidden: number) => t('fold.expandWorkspaces', { n: hidden }),
       collapse: t('fold.collapse'),
+      sessionExpand: (hidden: number) => t('fold.expandSessions', { n: hidden }),
     },
     recency: (key: string) => recencyRef.current.get(key),
+    sessionRecency: (id: string) => sessionRecencyRef.current.get(id as SessionId),
     onToggle: () => { setWorkspaceExpanded(current => !current) },
     onToggleSection: () => { setWorkspaceCollapsed(current => !current) },
   }), [t])
@@ -569,15 +591,15 @@ export function RecentSessions(
   // five until some unrelated mutation happened to re-apply the fold.
   useEffect(() => { fold.refresh() }, [fold, recency])
 
-  // Showing the column again restores the folded default, the way the Codex
-  // sidebar does: the expanded state is a look, not a setting. The recent list
-  // starts over from its first page for the same reason.
+  // Showing the column again keeps the workspace list exactly as the operator
+  // left it: collapsing the sidebar is a change of viewport, not a revocation
+  // of the "show every project" choice, and the section's own collapse state
+  // stays too. The recent list starts over from its first page — its window is
+  // a scroll position, and the rail has none to keep.
   useEffect(() => {
     if (!wide) return
     setRecentFolded(false)
     setRendered(RECENT_PAGE_SIZE)
-    setWorkspaceExpanded(false)
-    setWorkspaceCollapsed(false)
   }, [wide])
 
   // Reaching the end of the rendered window loads the next page of older

@@ -4,8 +4,8 @@ import type { SessionListState, SessionSummary } from '@deepseek-ai/dsh-api-sess
 import type { WorkspaceId, WorkspaceView } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import {
-  FOLD_ROW_ATTRIBUTE, WorkspaceListFold, groupKey, groupRecency, groupSections, splitByRecency,
-  UNGROUPED_KEY, workspaceListContainer,
+  FOLD_ROW_ATTRIBUTE, WorkspaceListFold, groupKey, groupRecency, groupSections, loadWorkspaceExpanded,
+  saveWorkspaceExpanded, splitByRecency, UNGROUPED_KEY, workspaceListContainer,
 } from '../src/client/workspaceFold.ts'
 
 /**
@@ -602,5 +602,71 @@ describe('recent section inside the list area', () => {
     // grow the shell gave it: there is no slack to trade any more.
     expect(container.style.flex).toBe('')
     dispose()
+  })
+})
+
+describe('rail mode (the sidebar collapsed)', () => {
+  it('writes nothing while the label is gone, so the chevron can never feed itself', async () => {
+    mountSidebar(8)
+    const { fold } = makeFold()
+    const dispose = fold.start()
+    expect(chevron()?.parentElement).toBe(sectionHeader())
+
+    // The rail unmounts the label and the whole list. The chevron is now the
+    // header's first child — the exact shape that once made the anchor fall
+    // back to the chevron itself, whose self-reinsertion the fold's own
+    // observer re-observed forever, freezing the renderer at 100% CPU.
+    sectionHeader().querySelector('[class*="_sectionLabel"]')?.remove()
+    workspaceListContainer(document)?.replaceChildren()
+
+    let mutations = 0
+    const observer = new MutationObserver(records => { mutations += records.length })
+    observer.observe(sectionHeader(), { childList: true, subtree: true })
+    try {
+      for (let index = 0; index < 50; index++) fold.refresh()
+      await new Promise(resolve => { setTimeout(resolve, 0) })
+      expect(mutations).toBe(0)
+      // The arrow is parked (a style write the childList observer never sees).
+      expect(chevron()?.style.display).toBe('none')
+    } finally {
+      observer.disconnect()
+    }
+    dispose()
+  })
+
+  it('unparks the chevron after the label returns and keeps it after the label', async () => {
+    mountSidebar(8)
+    const { fold } = makeFold()
+    const dispose = fold.start()
+    const label = sectionHeader().querySelector('[class*="_sectionLabel"]')
+    if (!(label instanceof HTMLElement)) throw new Error('test fixture: label missing')
+
+    label.remove()
+    fold.refresh()
+    expect(chevron()?.style.display).toBe('none')
+
+    // Back to wide: the shell remounts the label and the fold re-adopts it.
+    sectionHeader().prepend(label)
+    fold.refresh()
+    expect(chevron()?.style.display).toBe('')
+    expect(chevron()?.previousElementSibling).toBe(label)
+    dispose()
+  })
+})
+
+describe('the unfolded choice in the local store', () => {
+  it('round-trips through the store and defaults to folded', () => {
+    window.localStorage.clear()
+    expect(loadWorkspaceExpanded()).toBe(false)
+    saveWorkspaceExpanded(true)
+    expect(loadWorkspaceExpanded()).toBe(true)
+    saveWorkspaceExpanded(false)
+    expect(loadWorkspaceExpanded()).toBe(false)
+  })
+
+  it('degrades to folded on a refusing store', () => {
+    const refusing = { getItem: () => { throw new Error('denied') } }
+    expect(loadWorkspaceExpanded(refusing)).toBe(false)
+    expect(() => saveWorkspaceExpanded(true, { setItem: () => { throw new Error('denied') } })).not.toThrow()
   })
 })

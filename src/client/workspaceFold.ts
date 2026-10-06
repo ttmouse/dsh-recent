@@ -50,6 +50,41 @@ const SECTION_LABEL_FRAGMENT = '_sectionLabel'
 /** Class-name fragment of the sidebar's foot area, the anchor for the list's owning column. */
 const FOOT_AREA_FRAGMENT = '_footArea'
 
+/**
+ * The local-store key holding the list's unfolded choice. Expanding the list is
+ * a setting rather than a look: the operator asked to see every project, and a
+ * collapsed rail or a page reload must not quietly revoke that.
+ */
+const EXPANDED_STORE_KEY = 'dsh-recent:view.workspacesExpanded'
+
+/**
+ * Read the stored unfolded choice.
+ * @param store - the storage to read (the browser's local store, or a test double).
+ * @returns whether the list should render unfolded; anything but the exact on
+ * value degrades to the folded default.
+ */
+export function loadWorkspaceExpanded(store: Pick<Storage, 'getItem'> = window.localStorage): boolean {
+  try {
+    return store.getItem(EXPANDED_STORE_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Store the unfolded choice. A failed write (private mode, quota) is not an
+ * error the section can act on — the choice still holds for this visit.
+ * @param expanded - whether the list should render unfolded.
+ * @param store - the storage to write (the browser's local store, or a test double).
+ */
+export function saveWorkspaceExpanded(expanded: boolean, store: Pick<Storage, 'setItem'> = window.localStorage): void {
+  try {
+    store.setItem(EXPANDED_STORE_KEY, expanded ? '1' : '0')
+  } catch {
+    // Held for this visit only; nothing to report into the sidebar.
+  }
+}
+
 /** Owner attribute on the injected toggle row (selecting by class would depend on our own hash). */
 export const FOLD_ROW_ATTRIBUTE = 'data-dsh-recent-fold'
 
@@ -58,6 +93,26 @@ export const SECTION_COLLAPSED_ATTRIBUTE = 'data-dsh-recent-section'
 
 /** Owner attribute on the injected chevron inside the section header. */
 export const SECTION_CHEVRON_ATTRIBUTE = 'data-dsh-recent-section-chevron'
+
+/** Owner attribute on the injected per-group session overflow row. */
+export const SESSION_OVERFLOW_ATTRIBUTE = 'data-dsh-recent-session-overflow'
+
+/**
+ * Idle Session rows the shell itself shows per Workspace before its own
+ * overflow control (`COLLAPSED_SESSION_LIMIT` in the shell's browser). The
+ * shell exempts running, blank, and subagent-carrying sessions from that
+ * quota; this plugin's per-group fold does not — {@link SESSION_FOLD_LIMIT}
+ * is the strict newest-rows count it enforces regardless of state.
+ */
+export const SHELL_SESSION_LIMIT = 5
+
+/**
+ * Session rows one group shows while folded: the newest rows by history time,
+ * whatever their live state. The operator asked for "the five most recent
+ * conversations, period", so a running session older than the fifth newest
+ * leaves the column with the idle ones.
+ */
+export const SESSION_FOLD_LIMIT = 5
 
 /**
  * Disclosure chevron geometry, copied from the shell's own thin chevron
@@ -80,6 +135,11 @@ export interface FoldLabels {
   expand: (hidden: number) => string
   /** Label while unfolded. */
   collapse: string
+  /**
+   * Label of one group's session overflow row while that group holds back rows;
+   * `hidden` is the number of session rows out of sight.
+   */
+  sessionExpand: (hidden: number) => string
 }
 
 /** Construction options for {@link WorkspaceListFold}. */
@@ -94,6 +154,13 @@ export interface WorkspaceFoldOptions {
    * every application, so the owner can swap the map as the catalog moves.
    */
   recency: (key: string) => number | undefined
+  /**
+   * Newest history time of one Session, by the id {@link sessionRows} reads off
+   * its row; a row whose id is absent (a row the catalog no longer knows) ranks
+   * last. Read on every application, so the owner can swap the lookup as the
+   * catalog moves.
+   */
+  sessionRecency: (id: string) => number | undefined
   /** Called when the operator clicks the toggle row. */
   onToggle: () => void
   /** Called when the operator clicks the section header chevron. */
@@ -142,6 +209,31 @@ export function groupKey(group: HTMLElement): string | undefined {
   const header = group.querySelector(`[data-row-key^="${WORKSPACE_ROW_KEY}"]`)
   const key = header?.getAttribute('data-row-key')
   return key === null || key === undefined ? undefined : key.slice(WORKSPACE_ROW_KEY.length)
+}
+
+/** Row-key prefix the shell writes on one session row (`data-row-key="session:<id>"`). */
+const SESSION_ROW_KEY = 'session:'
+
+/** Row-key prefix of the shell's own per-group overflow row (`overflow:<group key>`). */
+const OVERFLOW_ROW_KEY = 'overflow:'
+
+/**
+ * The session rows one group section holds, in render order. Direct-children
+ * only: the group's header row and its own overflow row sit beside them, and a
+ * nested group's rows belong to that group.
+ * @param group - one group section.
+ * @returns the session rows, in the order the shell rendered them.
+ */
+export function sessionRows(group: HTMLElement): HTMLElement[] {
+  return [...group.children].filter(
+    (child): child is HTMLElement =>
+      child instanceof HTMLElement && (child.getAttribute('data-row-key') ?? '').startsWith(SESSION_ROW_KEY),
+  )
+}
+
+/** Session id of one session row, by the key {@link sessionRows} matched. */
+export function sessionRowId(row: HTMLElement): string {
+  return (row.getAttribute('data-row-key') ?? '').slice(SESSION_ROW_KEY.length)
 }
 
 /**
@@ -254,6 +346,10 @@ function createChevron(): SVGSVGElement {
 export class WorkspaceListFold {
   private collapsed = false
   private expanded = false
+  /** Group keys the operator unfolded past {@link SESSION_FOLD_LIMIT} sessions. */
+  private readonly expandedGroups = new Set<string>()
+  /** One overflow row per folded group, keyed by {@link groupKey}. */
+  private readonly sessionButtons = new Map<string, HTMLButtonElement>()
   private observer: MutationObserver | undefined
   private scheduled = false
   private column: HTMLElement | undefined
@@ -262,6 +358,20 @@ export class WorkspaceListFold {
   private readonly button: HTMLButtonElement
   /** Stable header-click handler, so {@link dispose} can always remove it. */
   private readonly onHeaderClick = (): void => { this.options.onToggleSection() }
+  /**
+   * The shell's own overflow row (`overflow:<group key>`) expands that group
+   * past the shell's idle-session quota; this layer must not pull those rows
+   * back out of sight behind the operator. One document-level listener covers
+   * every group, present and future.
+   */
+  private readonly onDocumentClick = (event: MouseEvent): void => {
+    const target = event.target instanceof Element ? event.target.closest(`[data-row-key^="${OVERFLOW_ROW_KEY}"]`) : null
+    if (!(target instanceof HTMLElement)) return
+    const key = (target.getAttribute('data-row-key') ?? '').slice(OVERFLOW_ROW_KEY.length)
+    if (key === '') return
+    this.expandedGroups.add(key)
+    this.apply()
+  }
 
   /**
    * @param options - fold limit, copy, the group ranking, and the two toggle callbacks.
@@ -288,6 +398,7 @@ export class WorkspaceListFold {
       if (records.some(record => this.touchesSidebar(record))) this.schedule()
     })
     this.observer.observe(document.body, { childList: true, subtree: true })
+    document.addEventListener('click', this.onDocumentClick)
     return () => { this.dispose() }
   }
 
@@ -308,6 +419,10 @@ export class WorkspaceListFold {
   setExpanded(expanded: boolean): void {
     if (this.expanded === expanded) return
     this.expanded = expanded
+    // Re-showing the column restores the folded default (the owner drops the
+    // wide state, which lands here): the per-group session unfolds are the same
+    // look, not a setting, so they fall back with it.
+    if (!expanded) this.expandedGroups.clear()
     this.apply()
   }
 
@@ -325,10 +440,17 @@ export class WorkspaceListFold {
     this.observer?.disconnect()
     this.observer = undefined
     this.column = undefined
+    document.removeEventListener('click', this.onDocumentClick)
     const container = workspaceListContainer(document)
     if (container !== undefined) {
-      for (const group of groupSections(container)) setHidden(group, false)
+      for (const group of groupSections(container)) {
+        setHidden(group, false)
+        for (const row of sessionRows(group)) setHidden(row, false)
+      }
     }
+    for (const button of this.sessionButtons.values()) button.remove()
+    this.sessionButtons.clear()
+    this.expandedGroups.clear()
     this.button.remove()
     this.chevron.remove()
     // The section itself belongs to React: the component's own unmount removes
@@ -384,7 +506,21 @@ export class WorkspaceListFold {
       groups, this.options.limit, this.expanded, group => this.groupRecency(group),
     )
     const kept = new Set(visible)
-    for (const group of groups) setHidden(group, this.collapsed || !kept.has(group))
+    const seenGroups = new Set<string>()
+    for (const group of groups) {
+      setHidden(group, this.collapsed || !kept.has(group))
+      const key = this.applySessionFold(group)
+      if (key !== undefined) seenGroups.add(key)
+    }
+    // Groups the shell stopped rendering leave their overflow rows behind in
+    // this map; nothing else will remove them.
+    for (const [key, button] of this.sessionButtons) {
+      if (!seenGroups.has(key)) {
+        button.remove()
+        this.sessionButtons.delete(key)
+        this.expandedGroups.delete(key)
+      }
+    }
     // Collapsed, the header alone brings the list back; the fold row would
     // repeat the same offer one line below it.
     if (this.collapsed) {
@@ -424,6 +560,71 @@ export class WorkspaceListFold {
   }
 
   /**
+   * Enforce the strict per-group session fold: whichever rows the shell chose
+   * to render, the group shows only the {@link SESSION_FOLD_LIMIT} newest by
+   * history time — running and blank rows included, unlike the shell's own
+   * quota — and the rest wait behind one overflow row. The write pattern is the
+   * list fold's: rows are hidden with a compared-first inline style and the
+   * overflow row is placed only when its position is wrong, so the observer
+   * never feeds itself.
+   * @param group - one group section.
+   * @returns the group's key, or undefined when it carries no addressable header
+   * (its rows are then left exactly as the shell rendered them).
+   */
+  private applySessionFold(group: HTMLElement): string | undefined {
+    const key = groupKey(group)
+    const rows = sessionRows(group)
+    if (key === undefined || rows.length <= SESSION_FOLD_LIMIT || this.expandedGroups.has(key)) {
+      for (const row of rows) setHidden(row, false)
+      this.dropSessionButton(key)
+      return key
+    }
+    const ranked = rows
+      .map((row, index) => {
+        const at = this.options.sessionRecency(sessionRowId(row))
+        return { row, index, at: at !== undefined && Number.isFinite(at) ? at : 0 }
+      })
+      .sort((a, b) => (b.at !== a.at ? b.at - a.at : a.index - b.index))
+    const kept = new Set(ranked.slice(0, SESSION_FOLD_LIMIT).map(entry => entry.row))
+    for (const row of rows) setHidden(row, !kept.has(row))
+    // The row trails the last session the fold keeps, in render order, so it
+    // reads as the boundary of everything the group holds back.
+    const anchor = ranked.filter(entry => kept.has(entry.row)).at(-1)?.row
+    if (anchor !== undefined) this.syncSessionButton(key, anchor, rows.length - SESSION_FOLD_LIMIT)
+    return key
+  }
+
+  /** Place one group's overflow row, writing only when its position moved. */
+  private syncSessionButton(key: string, anchor: HTMLElement, hiddenCount: number): void {
+    let button = this.sessionButtons.get(key)
+    if (button === undefined) {
+      button = document.createElement('button')
+      button.type = 'button'
+      button.setAttribute(SESSION_OVERFLOW_ATTRIBUTE, '')
+      button.setAttribute('aria-expanded', 'false')
+      button.addEventListener('click', () => {
+        this.expandedGroups.add(key)
+        this.apply()
+      })
+      this.sessionButtons.set(key, button)
+    }
+    const label = this.options.labels.sessionExpand(hiddenCount)
+    if (button.textContent !== label) button.textContent = label
+    if (button.parentElement !== anchor.parentElement || button.previousElementSibling !== anchor) {
+      anchor.after(button)
+    }
+  }
+
+  /** Remove one group's overflow row, if it has one. */
+  private dropSessionButton(key: string | undefined): void {
+    if (key === undefined) return
+    const button = this.sessionButtons.get(key)
+    if (button === undefined) return
+    button.remove()
+    this.sessionButtons.delete(key)
+  }
+
+  /**
    * Adopt the shell's section header: mark it as the collapse toggle, place the
    * chevron, and route clicks on it to the owner. The header's own buttons (view
    * options, search) and the project rows' drag targets keep their own handlers:
@@ -454,8 +655,21 @@ export class WorkspaceListFold {
     // Codex places the disclosure triangle right after the label ("<name> ▸"),
     // so the marker goes after the label element — not at the end of the header,
     // which the shell lays out right-aligned against its own trailing controls.
+    // Rail mode (the sidebar collapsed) renders no label and also unmounts the
+    // workspace list, so the anchor must never fall back to the header's first
+    // child here: once the label is gone, that child is this chevron itself, and
+    // `chevron.after(chevron)` would remove and re-insert the node against
+    // itself — a childList mutation per application, re-observed, forever — which
+    // froze the renderer's event loop at 100% CPU. Rail mode therefore only parks
+    // the arrow (a style write, which the childList observer never sees) and
+    // waits for the label, and the wide placement is guarded on the exact
+    // previous sibling so a settled header is never touched again.
     const label = header.querySelector(`[class*="${SECTION_LABEL_FRAGMENT}"]`)
-    const anchor = label instanceof HTMLElement ? label : header.firstElementChild
-    if (anchor !== null && this.chevron.previousElementSibling !== anchor) anchor.after(this.chevron)
+    if (!(label instanceof HTMLElement)) {
+      if (this.chevron.style.display !== 'none') this.chevron.style.display = 'none'
+      return
+    }
+    if (this.chevron.style.display !== '') this.chevron.style.display = ''
+    if (this.chevron.previousElementSibling !== label) label.after(this.chevron)
   }
 }
