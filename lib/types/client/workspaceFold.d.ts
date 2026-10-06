@@ -56,12 +56,34 @@ export declare const FOLD_ROW_ATTRIBUTE = "data-dsh-recent-fold";
 export declare const SECTION_COLLAPSED_ATTRIBUTE = "data-dsh-recent-section";
 /** Owner attribute on the injected chevron inside the section header. */
 export declare const SECTION_CHEVRON_ATTRIBUTE = "data-dsh-recent-section-chevron";
+/** Owner attribute on the injected per-group session overflow row. */
+export declare const SESSION_OVERFLOW_ATTRIBUTE = "data-dsh-recent-session-overflow";
+/**
+ * Idle Session rows the shell itself shows per Workspace before its own
+ * overflow control (`COLLAPSED_SESSION_LIMIT` in the shell's browser). The
+ * shell exempts running, blank, and subagent-carrying sessions from that
+ * quota; this plugin's per-group fold does not — {@link SESSION_FOLD_LIMIT}
+ * is the strict newest-rows count it enforces regardless of state.
+ */
+export declare const SHELL_SESSION_LIMIT = 5;
+/**
+ * Session rows one group shows while folded: the newest rows by history time,
+ * whatever their live state. The operator asked for "the five most recent
+ * conversations, period", so a running session older than the fifth newest
+ * leaves the column with the idle ones.
+ */
+export declare const SESSION_FOLD_LIMIT = 5;
 /** Copy for the fold row under both states. */
 export interface FoldLabels {
     /** Label while folded; `hidden` is the number of items the fold holds back. */
     expand: (hidden: number) => string;
     /** Label while unfolded. */
     collapse: string;
+    /**
+     * Label of one group's session overflow row while that group holds back rows;
+     * `hidden` is the number of session rows out of sight.
+     */
+    sessionExpand: (hidden: number) => string;
 }
 /** Construction options for {@link WorkspaceListFold}. */
 export interface WorkspaceFoldOptions {
@@ -75,6 +97,13 @@ export interface WorkspaceFoldOptions {
      * every application, so the owner can swap the map as the catalog moves.
      */
     recency: (key: string) => number | undefined;
+    /**
+     * Newest history time of one Session, by the id {@link sessionRows} reads off
+     * its row; a row whose id is absent (a row the catalog no longer knows) ranks
+     * last. Read on every application, so the owner can swap the lookup as the
+     * catalog moves.
+     */
+    sessionRecency: (id: string) => number | undefined;
     /** Called when the operator clicks the toggle row. */
     onToggle: () => void;
     /** Called when the operator clicks the section header chevron. */
@@ -101,6 +130,16 @@ export declare const UNGROUPED_KEY = "";
  * @returns the key, or undefined when the section carries no header row.
  */
 export declare function groupKey(group: HTMLElement): string | undefined;
+/**
+ * The session rows one group section holds, in render order. Direct-children
+ * only: the group's header row and its own overflow row sit beside them, and a
+ * nested group's rows belong to that group.
+ * @param group - one group section.
+ * @returns the session rows, in the order the shell rendered them.
+ */
+export declare function sessionRows(group: HTMLElement): HTMLElement[];
+/** Session id of one session row, by the key {@link sessionRows} matched. */
+export declare function sessionRowId(row: HTMLElement): string;
 /**
  * Newest session time of every group, keyed the way {@link groupKey} reads
  * groups. Membership is the shell's own: each Workspace owns the sessions the
@@ -145,6 +184,10 @@ export declare class WorkspaceListFold {
     private readonly options;
     private collapsed;
     private expanded;
+    /** Group keys the operator unfolded past {@link SESSION_FOLD_LIMIT} sessions. */
+    private readonly expandedGroups;
+    /** One overflow row per folded group, keyed by {@link groupKey}. */
+    private readonly sessionButtons;
     private observer;
     private scheduled;
     private column;
@@ -153,6 +196,13 @@ export declare class WorkspaceListFold {
     private readonly button;
     /** Stable header-click handler, so {@link dispose} can always remove it. */
     private readonly onHeaderClick;
+    /**
+     * The shell's own overflow row (`overflow:<group key>`) expands that group
+     * past the shell's idle-session quota; this layer must not pull those rows
+     * back out of sight behind the operator. One document-level listener covers
+     * every group, present and future.
+     */
+    private readonly onDocumentClick;
     /**
      * @param options - fold limit, copy, the group ranking, and the two toggle callbacks.
      */
@@ -197,6 +247,23 @@ export declare class WorkspaceListFold {
      * @returns the group's newest history time.
      */
     private groupRecency;
+    /**
+     * Enforce the strict per-group session fold: whichever rows the shell chose
+     * to render, the group shows only the {@link SESSION_FOLD_LIMIT} newest by
+     * history time — running and blank rows included, unlike the shell's own
+     * quota — and the rest wait behind one overflow row. The write pattern is the
+     * list fold's: rows are hidden with a compared-first inline style and the
+     * overflow row is placed only when its position is wrong, so the observer
+     * never feeds itself.
+     * @param group - one group section.
+     * @returns the group's key, or undefined when it carries no addressable header
+     * (its rows are then left exactly as the shell rendered them).
+     */
+    private applySessionFold;
+    /** Place one group's overflow row, writing only when its position moved. */
+    private syncSessionButton;
+    /** Remove one group's overflow row, if it has one. */
+    private dropSessionButton;
     /**
      * Adopt the shell's section header: mark it as the collapse toggle, place the
      * chevron, and route clicks on it to the owner. The header's own buttons (view

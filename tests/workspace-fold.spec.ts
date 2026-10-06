@@ -4,8 +4,9 @@ import type { SessionListState, SessionSummary } from '@deepseek-ai/dsh-api-sess
 import type { WorkspaceId, WorkspaceView } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import {
-  FOLD_ROW_ATTRIBUTE, WorkspaceListFold, groupKey, groupRecency, groupSections, loadWorkspaceExpanded,
-  saveWorkspaceExpanded, splitByRecency, UNGROUPED_KEY, workspaceListContainer,
+  FOLD_ROW_ATTRIBUTE, SESSION_FOLD_LIMIT, SESSION_OVERFLOW_ATTRIBUTE, WorkspaceListFold, groupKey, groupRecency,
+  groupSections, loadWorkspaceExpanded, saveWorkspaceExpanded, sessionRowId, sessionRows, splitByRecency,
+  UNGROUPED_KEY, workspaceListContainer,
 } from '../src/client/workspaceFold.ts'
 
 /**
@@ -116,8 +117,13 @@ function makeFold(overrides: Partial<ConstructorParameters<typeof WorkspaceListF
   const onToggleSection = vi.fn()
   const fold = new WorkspaceListFold({
     limit: 5,
-    labels: { expand: hidden => `show ${hidden} more`, collapse: 'show less' },
+    labels: {
+      expand: hidden => `show ${hidden} more`,
+      collapse: 'show less',
+      sessionExpand: hidden => `show ${hidden} more conversations`,
+    },
     recency: () => undefined,
+    sessionRecency: () => undefined,
     onToggle,
     onToggleSection,
     ...overrides,
@@ -651,6 +657,121 @@ describe('rail mode (the sidebar collapsed)', () => {
     expect(chevron()?.style.display).toBe('')
     expect(chevron()?.previousElementSibling).toBe(label)
     dispose()
+  })
+})
+
+describe('the strict per-group session fold', () => {
+  /** One group holding `count` session rows, keyed `workspace:w0` / `session:s<n>`. */
+  function mountSessionGroup(count: number): { container: HTMLElement; group: HTMLElement } {
+    const container = mountSidebar(1)
+    const group = container.firstElementChild as HTMLElement
+    const existing = [...sessionRows(group)]
+    for (let index = existing.length; index < count; index++) {
+      const row = document.createElement('div')
+      row.className = 'YDXeBa_sessionRow'
+      row.setAttribute('data-row-key', `session:s${index}`)
+      row.textContent = `session ${index}`
+      group.append(row)
+    }
+    // The fixture's first session row carries no session key; give it one.
+    sessionRows(group)[0]?.setAttribute('data-row-key', 'session:s0')
+    return { container, group }
+  }
+
+  it('keeps the newest five rows whatever their live state', () => {
+    const { container } = mountSessionGroup(8)
+    const recency: Record<string, number> = { s0: 100, s1: 800, s2: 300, s3: 700, s4: 200, s5: 600, s6: 400, s7: 500 }
+    const { fold } = makeFold({ sessionRecency: id => recency[id] })
+    const dispose = fold.start()
+
+    const visible = sessionRows(container.firstElementChild as HTMLElement)
+      .filter(row => row.style.display !== 'none')
+      .map(row => row.textContent)
+    // s1, s3, s5, s7, s6 are the five newest; the survivors keep render order.
+    expect(visible).toEqual(['session 1', 'session 3', 'session 5', 'session 6', 'session 7'])
+    expect(SESSION_FOLD_LIMIT).toBe(5)
+    const row = document.querySelector(`[${SESSION_OVERFLOW_ATTRIBUTE}]`)
+    expect(row?.textContent).toBe('show 3 more conversations')
+    // The row trails the last kept session in render order.
+    expect(row?.previousElementSibling?.getAttribute('data-row-key')).toBe('session:s6')
+    dispose()
+  })
+
+  it('folds running rows exactly like idle ones', () => {
+    const { container } = mountSessionGroup(7)
+    // s6 is the running session the shell would have exempted; it is also the
+    // oldest, so the strict fold hides it.
+    const recency: Record<string, number> = { s0: 700, s1: 600, s2: 500, s3: 400, s4: 300, s5: 200, s6: 100 }
+    const { fold } = makeFold({ sessionRecency: id => recency[id] })
+    const dispose = fold.start()
+    const rows = sessionRows(container.firstElementChild as HTMLElement)
+    expect(rows[6]?.style.display).toBe('none')
+    dispose()
+  })
+
+  it('shows everything and no overflow row within the limit', () => {
+    const { container } = mountSessionGroup(SESSION_FOLD_LIMIT)
+    const { fold } = makeFold({ sessionRecency: () => 1 })
+    const dispose = fold.start()
+    for (const row of sessionRows(container.firstElementChild as HTMLElement)) {
+      expect(row.style.display).toBe('')
+    }
+    expect(document.querySelector(`[${SESSION_OVERFLOW_ATTRIBUTE}]`)).toBeNull()
+    dispose()
+  })
+
+  it('unfolds a group from its overflow row and from the shell row', () => {
+    const { container } = mountSessionGroup(7)
+    const recency: Record<string, number> = { s0: 700, s1: 600, s2: 500, s3: 400, s4: 300, s5: 200, s6: 100 }
+    const { fold } = makeFold({ sessionRecency: id => recency[id] })
+    const dispose = fold.start()
+    const group = container.firstElementChild as HTMLElement
+
+    const row = document.querySelector(`[${SESSION_OVERFLOW_ATTRIBUTE}]`)
+    ;(row as HTMLElement).click()
+    expect(sessionRows(group).every(item => item.style.display === '')).toBe(true)
+    expect(document.querySelector(`[${SESSION_OVERFLOW_ATTRIBUTE}]`)).toBeNull()
+
+    // The shell's own overflow row expands the group the same way.
+    fold.setExpanded(false)
+    const shellRow = document.createElement('button')
+    shellRow.setAttribute('data-row-key', 'overflow:w0')
+    group.append(shellRow)
+    shellRow.click()
+    expect(sessionRows(group).every(item => item.style.display === '')).toBe(true)
+    dispose()
+    // Disposal reveals every row again.
+    expect(sessionRows(group).every(item => item.style.display === '')).toBe(true)
+  })
+
+  it('restores rows and drops the overflow row when the shell re-renders', async () => {
+    const { container } = mountSessionGroup(7)
+    const recency: Record<string, number> = { s0: 700, s1: 600, s2: 500, s3: 400, s4: 300, s5: 200, s6: 100 }
+    const { fold } = makeFold({ sessionRecency: id => recency[id] })
+    const dispose = fold.start()
+    const group = container.firstElementChild as HTMLElement
+    expect(sessionRows(group)[6]?.style.display).toBe('none')
+
+    // The shell removes rows entirely; the fold converges within the limit.
+    sessionRows(group)[6]?.remove()
+    sessionRows(group)[5]?.remove()
+    await new Promise(resolve => { setTimeout(resolve, 0) })
+    expect(sessionRows(group).every(item => item.style.display === '')).toBe(true)
+    expect(document.querySelector(`[${SESSION_OVERFLOW_ATTRIBUTE}]`)).toBeNull()
+    dispose()
+  })
+})
+
+describe('sessionRows', () => {
+  it('reads only the session rows of one group, by their row key', () => {
+    const container = mountSidebar(1, { ungrouped: true })
+    const group = container.firstElementChild as HTMLElement
+    const fixtureRow = group.querySelector('[class*="sessionRow"]')
+    if (!(fixtureRow instanceof HTMLElement)) throw new Error('test fixture: session row missing')
+    fixtureRow.setAttribute('data-row-key', 'session:s0')
+    const rows = sessionRows(group)
+    expect(rows).toHaveLength(1)
+    expect(sessionRowId(rows[0] as HTMLElement)).toBe('s0')
   })
 })
 
