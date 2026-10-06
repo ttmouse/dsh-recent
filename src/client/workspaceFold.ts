@@ -373,6 +373,23 @@ function createChevron(): SVGSVGElement {
 }
 
 /**
+ * The layer currently owning the document's injected controls. The plugin's
+ * client half can mount more than once per page — a reload of the client
+ * bundle (client HMR), a shell remount, a slot rendered twice — and each mount
+ * builds its own layer with its own chevron and fold row. The shell knows
+ * nothing about either: it never removes a node it did not render, so a layer
+ * that goes away without taking its nodes with it (its observer disconnected,
+ * its disposer already run, or a write queued before disposal) leaves a second
+ * row and a second chevron in the sidebar for good.
+ *
+ * One owner at a time is what makes the layer safe against that: the newest
+ * mount claims the document, drops every copy the earlier mounts left behind,
+ * and an earlier layer refuses every later write instead of re-anchoring
+ * against the new one — the -1/+1 mutation war that once froze the renderer.
+ */
+let owner: WorkspaceListFold | undefined
+
+/**
  * The workspace section's collapse plus the list's fold: state, the injected
  * chevron and fold row, and the observer that keeps both applied while React
  * owns the list.
@@ -380,6 +397,8 @@ function createChevron(): SVGSVGElement {
 export class WorkspaceListFold {
   private collapsed = false
   private expanded = false
+  /** Set by {@link dispose}: a disposed layer never writes again, not even from a queued apply. */
+  private disposed = false
   /** Group keys the operator unfolded past {@link SESSION_FOLD_LIMIT} sessions. */
   private readonly expandedGroups = new Set<string>()
   /** One overflow row per folded group, keyed by {@link groupKey}. */
@@ -419,10 +438,16 @@ export class WorkspaceListFold {
   }
 
   /**
-   * Apply both behaviors and keep them applied until disposal.
+   * Apply both behaviors and keep them applied until disposal. A mount that
+   * finds an earlier layer still owning the document takes the document over:
+   * the earlier layer is disposed (its controls leave with it) and refuses
+   * every later write, so exactly one layer ever writes.
    * @returns the disposer that stops observing and restores the list and header.
    */
   start(): () => void {
+    if (owner !== undefined && owner !== this) owner.dispose()
+    owner = this
+    this.disposed = false
     this.apply()
     // The document is the observer target because React may replace the column
     // itself (plugin reload, shell remount); the per-record filter below keeps
@@ -453,9 +478,10 @@ export class WorkspaceListFold {
   setExpanded(expanded: boolean): void {
     if (this.expanded === expanded) return
     this.expanded = expanded
-    // Re-showing the column restores the folded default (the owner drops the
-    // wide state, which lands here): the per-group session unfolds are the same
-    // look, not a setting, so they fall back with it.
+    // Only the fold row's own collapse and the owner ending the choice land
+    // here: the per-group session unfolds ride along with it — the same look,
+    // not a setting. When the owner folds the section away it calls this with
+    // false too, so reopening the section returns to the folded default.
     if (!expanded) this.expandedGroups.clear()
     this.apply()
   }
@@ -469,8 +495,16 @@ export class WorkspaceListFold {
     this.apply()
   }
 
-  /** Stop observing, drop the injected controls, and reveal every group again. */
+  /**
+   * Stop observing, drop the injected controls, and reveal every group again.
+   * Disposal is final and idempotent: a React cleanup, a takeover by a newer
+   * mount, and a plugin unload can all reach it, and after the first call the
+   * layer must never write again (a queued apply included).
+   */
   dispose(): void {
+    if (this.disposed) return
+    this.disposed = true
+    if (owner === this) owner = undefined
     this.observer?.disconnect()
     this.observer = undefined
     this.column = undefined
@@ -487,6 +521,15 @@ export class WorkspaceListFold {
     this.expandedGroups.clear()
     this.button.remove()
     this.chevron.remove()
+    // Every copy of the injected controls goes with this layer when nothing
+    // live owns the document any more — the leftovers of a mount that never
+    // disposed are exactly what puts a second row under the workspace list.
+    // With a live owner the sweep is its job, on its next reconciliation.
+    if (owner === undefined) {
+      for (const node of document.querySelectorAll(
+        `[${FOLD_ROW_ATTRIBUTE}], [${SECTION_CHEVRON_ATTRIBUTE}], [${SESSION_OVERFLOW_ATTRIBUTE}]`,
+      )) node.remove()
+    }
     // The section itself belongs to React: the component's own unmount removes
     // the portal's nodes, so tearing them out here would leave React updating a
     // detached tree.
@@ -527,8 +570,18 @@ export class WorkspaceListFold {
     })
   }
 
-  /** Reconcile the DOM with the current states; every write is compared first. */
+  /**
+   * Reconcile the DOM with the current states; every write is compared first.
+   * A disposed layer and a layer that another mount has taken the document
+   * from both stay silent: a queued apply from before the disposal must not
+   * resurrect the controls it just removed, and two writers would re-anchor
+   * against each other forever.
+   */
   private apply(): void {
+    if (this.disposed) return
+    if (owner === undefined) owner = this
+    if (owner !== this) return
+    this.dropForeignControls()
     const container = workspaceListContainer(document)
     const groups = container === undefined ? [] : groupSections(container)
     this.applySectionHeader()
@@ -578,6 +631,21 @@ export class WorkspaceListFold {
     if (this.button.parentElement !== container || this.button.previousElementSibling !== anchor) {
       anchor.after(this.button)
     }
+  }
+
+  /**
+   * Remove every injected control the shell is holding that this layer did not
+   * create — the leftovers of an earlier mount. The shell never removes a node
+   * it did not render, so nothing else in the page will: without this sweep the
+   * sidebar shows the old chevron and the old fold row beside the live ones.
+   * The sweep runs before every reconciliation, so one pass is enough however
+   * many copies an earlier mount left behind.
+   */
+  private dropForeignControls(): void {
+    for (const node of document.querySelectorAll(`[${FOLD_ROW_ATTRIBUTE}]`)) if (node !== this.button) node.remove()
+    for (const node of document.querySelectorAll(`[${SECTION_CHEVRON_ATTRIBUTE}]`)) if (node !== this.chevron) node.remove()
+    const mine = new Set<Element>(this.sessionButtons.values())
+    for (const node of document.querySelectorAll(`[${SESSION_OVERFLOW_ATTRIBUTE}]`)) if (!mine.has(node)) node.remove()
   }
 
   /**

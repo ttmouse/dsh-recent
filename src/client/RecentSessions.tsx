@@ -586,6 +586,10 @@ export function RecentSessions(
   useEffect(() => fold.start(), [fold])
   useEffect(() => { fold.setExpanded(workspaceExpanded) }, [fold, workspaceExpanded])
   useEffect(() => { fold.setCollapsed(workspaceCollapsed) }, [fold, workspaceCollapsed])
+  // Folding the section away also ends the "show every project" choice, so
+  // reopening the section returns to the folded default of the newest few —
+  // the viewport change and the list choice share one fate.
+  useEffect(() => { if (workspaceCollapsed) setWorkspaceExpanded(false) }, [workspaceCollapsed])
   // New history moves groups in and out of the fold, so every catalog change
   // re-ranks the list; without this the folded column would keep yesterday's
   // five until some unrelated mutation happened to re-apply the fold.

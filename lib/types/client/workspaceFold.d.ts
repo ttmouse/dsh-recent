@@ -199,6 +199,8 @@ export declare class WorkspaceListFold {
     private readonly options;
     private collapsed;
     private expanded;
+    /** Set by {@link dispose}: a disposed layer never writes again, not even from a queued apply. */
+    private disposed;
     /** Group keys the operator unfolded past {@link SESSION_FOLD_LIMIT} sessions. */
     private readonly expandedGroups;
     /** One overflow row per folded group, keyed by {@link groupKey}. */
@@ -223,7 +225,10 @@ export declare class WorkspaceListFold {
      */
     constructor(options: WorkspaceFoldOptions);
     /**
-     * Apply both behaviors and keep them applied until disposal.
+     * Apply both behaviors and keep them applied until disposal. A mount that
+     * finds an earlier layer still owning the document takes the document over:
+     * the earlier layer is disposed (its controls leave with it) and refuses
+     * every later write, so exactly one layer ever writes.
      * @returns the disposer that stops observing and restores the list and header.
      */
     start(): () => void;
@@ -243,7 +248,12 @@ export declare class WorkspaceListFold {
      * a new {@link WorkspaceFoldOptions.recency} lookup.
      */
     refresh(): void;
-    /** Stop observing, drop the injected controls, and reveal every group again. */
+    /**
+     * Stop observing, drop the injected controls, and reveal every group again.
+     * Disposal is final and idempotent: a React cleanup, a takeover by a newer
+     * mount, and a plugin unload can all reach it, and after the first call the
+     * layer must never write again (a queued apply included).
+     */
     dispose(): void;
     /** The sidebar column, re-resolved after a replacement or a fresh mount. */
     private sidebar;
@@ -251,8 +261,23 @@ export declare class WorkspaceListFold {
     private touchesSidebar;
     /** Coalesce observer bursts into one application per microtask. */
     private schedule;
-    /** Reconcile the DOM with the current states; every write is compared first. */
+    /**
+     * Reconcile the DOM with the current states; every write is compared first.
+     * A disposed layer and a layer that another mount has taken the document
+     * from both stay silent: a queued apply from before the disposal must not
+     * resurrect the controls it just removed, and two writers would re-anchor
+     * against each other forever.
+     */
     private apply;
+    /**
+     * Remove every injected control the shell is holding that this layer did not
+     * create — the leftovers of an earlier mount. The shell never removes a node
+     * it did not render, so nothing else in the page will: without this sweep the
+     * sidebar shows the old chevron and the old fold row beside the live ones.
+     * The sweep runs before every reconciliation, so one pass is enough however
+     * many copies an earlier mount left behind.
+     */
+    private dropForeignControls;
     /**
      * Newest history time the owner reports for one group, or undefined when the
      * section carries no addressable key or the owner knows no history for it —

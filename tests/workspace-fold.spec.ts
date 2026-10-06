@@ -463,6 +463,48 @@ describe('workspace section collapse', () => {
     dispose()
   })
 
+  it('returns to the folded default when the owner ends the choice across the section round-trip', () => {
+    const container = mountSidebar(8)
+    const { fold } = makeFold({ recency: recencyFrom({ w0: 100, w1: 90, w2: 80, w3: 70, w4: 60 }) })
+    const dispose = fold.start()
+
+    fold.setExpanded(true)
+    expect(visibleTexts(container)).toHaveLength(8)
+    fold.setCollapsed(true)
+    expect(visibleTexts(container)).toEqual([])
+
+    // The owner folds the section away and ends the "show every project"
+    // choice with it, so reopening the section hands back the folded default
+    // of the newest few rather than the full list.
+    fold.setExpanded(false)
+    fold.setCollapsed(false)
+    expect(visibleTexts(container)).toHaveLength(5)
+    expect(foldRow()?.textContent).toBe('show 3 more')
+    expect(foldRow()?.getAttribute('aria-expanded')).toBe('false')
+    dispose()
+  })
+
+  it('returns to the folded default when the shell re-renders inside the collapse round-trip', async () => {
+    const container = mountSidebar(8)
+    const { fold } = makeFold({ recency: recencyFrom({ w0: 100, w1: 90, w2: 80, w3: 70, w4: 60 }) })
+    const dispose = fold.start()
+
+    fold.setExpanded(true)
+    fold.setCollapsed(true)
+    // The shell keeps rendering while the section is folded away: a session
+    // frame replaces the list wholesale before the operator reopens it.
+    container.replaceChildren(...Array.from({ length: 8 }, (_, index) => workspaceGroup(index)))
+    await new Promise(resolve => { setTimeout(resolve, 0) })
+    expect(visibleTexts(container)).toEqual([])
+
+    fold.setExpanded(false)
+    fold.setCollapsed(false)
+    expect(visibleTexts(container)).toHaveLength(5)
+    expect(foldRow()?.textContent).toBe('show 3 more')
+    expect(foldRow()?.previousElementSibling).toBe(container.children[4])
+    dispose()
+  })
+
   it('re-applies the collapse after React rewrites the header and list', async () => {
     const container = mountSidebar(8)
     const { fold } = makeFold()
@@ -899,5 +941,74 @@ describe('the unfolded choice in the local store', () => {
     const refusing = { getItem: () => { throw new Error('denied') } }
     expect(loadWorkspaceExpanded(refusing)).toBe(false)
     expect(() => saveWorkspaceExpanded(true, { setItem: () => { throw new Error('denied') } })).not.toThrow()
+  })
+})
+
+describe('one owner per document, and no leftover controls', () => {
+  it('drops the copy of its controls an earlier mount left in the shell DOM', () => {
+    const container = mountSidebar(6)
+    const { fold } = makeFold()
+    const dispose = fold.start()
+    expect(document.querySelectorAll(`[${FOLD_ROW_ATTRIBUTE}]`)).toHaveLength(1)
+
+    // A mount that never disposed left its own chevron, fold row, and group
+    // overflow row in the shell's DOM. The shell renders neither, so nothing
+    // but this layer can ever take them out.
+    const strayRow = document.createElement('button')
+    strayRow.setAttribute(FOLD_ROW_ATTRIBUTE, '')
+    strayRow.textContent = 'show 18 more'
+    foldRow()?.after(strayRow)
+    const strayChevron = chevron()?.cloneNode(true)
+    if (!(strayChevron instanceof SVGElement)) throw new Error('test fixture: chevron missing')
+    chevron()?.after(strayChevron)
+    const strayOverflow = document.createElement('button')
+    strayOverflow.setAttribute(SESSION_OVERFLOW_ATTRIBUTE, '')
+    groupSections(container)[0]?.append(strayOverflow)
+
+    fold.refresh()
+
+    expect(document.querySelectorAll(`[${FOLD_ROW_ATTRIBUTE}]`)).toHaveLength(1)
+    expect(document.querySelectorAll('[data-dsh-recent-section-chevron]')).toHaveLength(1)
+    expect(document.querySelectorAll(`[${SESSION_OVERFLOW_ATTRIBUTE}]`)).toHaveLength(0)
+    dispose()
+  })
+
+  it('never writes again once disposed, however it is driven afterwards', () => {
+    mountSidebar(6)
+    const { fold } = makeFold()
+    fold.start()
+    expect(document.querySelectorAll(`[${FOLD_ROW_ATTRIBUTE}]`)).toHaveLength(1)
+
+    fold.dispose()
+    expect(document.querySelectorAll(`[${FOLD_ROW_ATTRIBUTE}]`)).toHaveLength(0)
+    expect(chevron()).toBeNull()
+
+    // A queued apply, a React effect on a stale layer, and a second cleanup
+    // all land here; none of them may resurrect the controls.
+    fold.refresh()
+    fold.setExpanded(true)
+    fold.setCollapsed(true)
+    fold.dispose()
+    expect(document.querySelectorAll(`[${FOLD_ROW_ATTRIBUTE}]`)).toHaveLength(0)
+    expect(chevron()).toBeNull()
+  })
+
+  it('hands the document to the newest mount and leaves the older one silent', () => {
+    mountSidebar(6)
+    const first = makeFold().fold
+    first.start()
+    const second = makeFold().fold
+    second.start()
+
+    // Exactly one pair of controls, owned by the second mount.
+    expect(document.querySelectorAll(`[${FOLD_ROW_ATTRIBUTE}]`)).toHaveLength(1)
+    expect(document.querySelectorAll('[data-dsh-recent-section-chevron]')).toHaveLength(1)
+
+    // The first mount is inert: its own state changes write nothing.
+    first.setExpanded(true)
+    expect(foldRow()?.textContent).toBe('show 1 more')
+    second.setExpanded(true)
+    expect(foldRow()?.textContent).toBe('show less')
+    expect(document.querySelectorAll(`[${FOLD_ROW_ATTRIBUTE}]`)).toHaveLength(1)
   })
 })
