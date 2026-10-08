@@ -112,6 +112,14 @@
      carries the operator down to it and past it. */
 }
 
+/* The first idle row right after the running group: the extra gap makes the
+   two states read as two blocks instead of one continuous column — the same
+   boundary the sort orders, made visible in spacing. The shell's own `>*+*`
+   2px slot spacing still applies underneath, so the gap is purely additive. */
+.groupGap {
+  margin-top: 10px;
+}
+
 /* The end of the rendered window: the element the section watches to decide
    that the next page of older sessions should load. It keeps a real box (an
    area-less target has no intersection to report) while staying invisible and

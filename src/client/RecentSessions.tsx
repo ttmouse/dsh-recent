@@ -320,9 +320,11 @@ function ViewOptionsMenu({ showWorkspace, onToggleWorkspace, t }: {
  * @param props.stale - whether another row currently owns the hover.
  * @param props.onHover - announce that this row took the hover.
  * @param props.showWorkspace - whether the row carries the project-name line.
+ * @param props.separatesGroups - whether this row opens the idle group right
+ *   after the running one, so its `li` carries the gap between the two states.
  * @returns the row element.
  */
-function RecentRowItem({ row, now, t, actions, onArchive, stale, onHover, showWorkspace }: {
+function RecentRowItem({ row, now, t, actions, onArchive, stale, onHover, showWorkspace, separatesGroups }: {
   row: RecentRow
   now: number
   t: RecentTranslate
@@ -331,6 +333,7 @@ function RecentRowItem({ row, now, t, actions, onArchive, stale, onHover, showWo
   stale: boolean
   onHover: () => void
   showWorkspace: boolean
+  separatesGroups: boolean
 }): ReactNode {
   const state = rowState(row)
   const label = statusLabel(row, t)
@@ -356,7 +359,7 @@ function RecentRowItem({ row, now, t, actions, onArchive, stale, onHover, showWo
     .filter(part => part !== '').join(' ')
   const pinLabel = row.pinned ? t('actions.unpin') : t('actions.pin')
   return (
-    <li onPointerEnter={onHover}>
+    <li onPointerEnter={onHover} className={separatesGroups ? css.groupGap : undefined}>
       <HoverCard
         anchor={
           <div
@@ -699,7 +702,7 @@ export function RecentSessions(
         />
       </div>
       {!recentFolded && <ul className={css.list}>
-        {visibleRows.map(row => (
+        {visibleRows.map((row, index) => (
           <RecentRowItem
             key={row.id}
             row={row}
@@ -712,6 +715,7 @@ export function RecentSessions(
               setHoveredID(current => current === row.id ? current : row.id)
             }}
             showWorkspace={showWorkspace}
+            separatesGroups={index > 0 && visibleRows[index - 1]?.running === true && !row.running}
           />
         ))}
         {visibleRows.length < rows.length && (
