@@ -1,0 +1,13 @@
+{
+  "runId": "run-1791491681817-c209c",
+  "routine": "taskboard-claim-af2ddb6b-633",
+  "profile": "headless",
+  "cwd": "/Users/douba/Projects/dsh-recent",
+  "status": "ok",
+  "startedAt": 1791491681817,
+  "sessionId": "claim-af2ddb6b-174e1d26",
+  "finishedAt": 1791492336812,
+  "durationMs": 654995,
+  "exitCode": 0,
+  "digest": "本轮干完了。议题 **AF2DDB6B6336-4** 仍是 `in_progress`（按你说的，我没有移动状态）。\n\n**改了什么：** 上一轮只删了过渡动画，位置差还在——悬停行的 4px 内缩会让高亮块的边和标题一起挪。这一轮把位置差本身去掉了：行恢复成和其他行完全一样的盒子；行尾的「时间 / 置顶标记 / 三个操作按钮」搬进一个固定 74px 宽的尾格，任何时刻只挂载其中一个。现在指针只改变**显示什么**（填充色 + 尾格内容），不改变**在哪里**。\n\n![真实 GUI：悬停前 / 悬停后](</tmp/dsh-recent-probe/evidence-gui.png>)\n\n上面是同一条侧栏、同一位置、同一时刻的两次截图：左＝指针不在行上，右＝指针停在 `.kb-pipeline` 这一行。行和文字的框没有任何移动，只有高亮色和右侧按钮换了。\n\n**验证：**\n- `tsc` 干净，`vitest run` **88 passed**（`recent-rows.spec.mjs` 的 7 条现在专盯「不位移」：`.rowActive` 不许有 margin/width/padding/transition/transform，尾格必须固定 74px）。\n- 新增 `scripts/probe-row-hover.mjs`，从构建产物 `lib/client.js` "
+}

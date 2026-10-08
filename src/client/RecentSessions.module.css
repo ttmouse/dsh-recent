@@ -126,23 +126,27 @@
 /* One session row: the shell's own session-row metrics (32px tall, no gap, 8px
    inline start plus the workspace indent variable, medium radius) so the
    workspace tree above and the recent list below are one column of identical
-   rows. The highlight is the shell's too: the box the pointer is on and the row
-   holding the current session paint the same fill.
+   rows.
 
-   The highlight is the shell's full-bleed bar, not a floating card: a row is
-   the same box the pointer is on, at the same width, in every state, so
-   nothing about the row's box or its contents may move on hover. The earlier
-   inset (4px of margin on each side of the pointer's row) was exactly that
-   movement: the fill's edge slid and the title stepped sideways the moment the
-   pointer arrived, and because the box is the layout of the text inside it, no
-   amount of dropping the transition removes the jump — it only removes the
-   slide *between* the two positions. What the pointer changes here is the
-   fill and the trailing cell; the box stays put.
+   The highlight is an *inset layer*, not the row's own background: the fill is
+   painted by {@link .row::before}, which spans the row's full height but stops
+   4px short of each inline end. That is what gives the pointer's row the gaps
+   that make it read as a card floating over the list — while the row box
+   itself, its width, the title's inline start and the trailing cell measure the
+   same at rest, on hover, and with the menu open.
 
-   The resting rows are full width for the same reason: it is what holds the
-   column's text at one inline start, hovered or not. */
+   The two facts have to be satisfied by different layers. A row is the layout
+   box of the text inside it, so insetting the *box* (the 4px `margin` an
+   earlier round put on the pointer's row) steps the title sideways under the
+   cursor and, being layout, no amount of dropping the transition removes the
+   jump — it only removes the slide between the two positions. Insetting the
+   layer the fill is painted on cannot move anything. */
 .row {
   box-sizing: border-box;
+  position: relative;
+  /* Keep the negative-z highlight layer inside this row's own stacking context,
+     so it paints over the row's background but never behind an ancestor's. */
+  isolation: isolate;
   display: flex;
   align-items: center;
   gap: 0;
@@ -160,20 +164,28 @@
   user-select: none;
 }
 
-.row:hover,
-.rowCurrent {
-  background: var(--dsw-alias-interactive-bg-hover);
+/* The highlight layer: the row's box minus a 4px gutter at each inline end, in
+   the shell's own fill and radius. Transparent at rest, so it costs nothing
+   until a state below turns it on. `z-index: -1` paints it under the row's
+   in-flow content (the state cell, the title, the trailing cell) rather than
+   over it; `pointer-events: none` leaves the whole row as the click target. */
+.row::before {
+  content: '';
+  position: absolute;
+  inset: 0 4px;
+  z-index: -1;
+  border-radius: var(--dsw-radius-md);
+  background: transparent;
+  pointer-events: none;
 }
 
-/* The pointer's row (and the one whose menu is open): the same box as every
-   other row. This class used to carry the 4px inset, which is the movement
-   that had to go; it is kept as the frame the row's *appearance* hangs on —
-   the fill, the trailing cell, and the row's shadow — so the highlight and
-   the row's actions cannot disagree, and the rule here is the one place that
-   documents the class. Keep it box-free: no margin, no width, no transition,
-   nothing the browser lays out. The row's contents are already fixed at every
-   state by {@link .slot}, {@link .rowActions} and {@link .rowActionsSpacer}. */
-.rowActive {
+/* The pointer's row (and the one whose menu is open), and the row holding the
+   current session, all paint the same fill on that layer. The fill lands in one
+   step — a row carries no `transition` at all — so arriving and leaving are
+   both instant, and nothing slides or hops under the cursor. */
+.row:hover::before,
+.rowActive::before,
+.rowCurrent::before {
   background: var(--dsw-alias-interactive-bg-hover);
 }
 
