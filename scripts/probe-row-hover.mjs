@@ -8,9 +8,18 @@
  * single occupant changes with the state.
  *
  * Reports, for each row: the row's and title's x offset, the row's width, the
- * trailing cell's width, and the column's scrollWidth/clientWidth — and does it
- * three times: at rest, with the row forced into its hover state, and with the
- * row's menu open (same state, so the same numbers are the expectation).
+ * trailing cell's width, the column's scrollWidth/clientWidth, and the
+ * highlight layer's own box (`::before`) — and does it three times: at rest,
+ * with the row forced into its hover state, and with the row's menu open (same
+ * state, so the same numbers are the expectation).
+ *
+ * Two independent requirements are checked, because they are easy to trade
+ * against each other by accident:
+ *
+ * - the pointer's row shows a 4px gutter at each inline end (the fill's layer is
+ *   inset), and
+ * - nothing about the row moves — its box, width, the title's inline start and
+ *   the trailing cell measure the same in all three states.
  *
  *   node scripts/probe-row-hover.mjs [outDir]
  */
@@ -43,14 +52,38 @@ const NAMES = {
   trailing: 'rowTrailing', time: 'time', pin: 'pinIndicator', actions: 'rowActions', icon: 'iconButton',
 }
 const c = Object.fromEntries(Object.entries(NAMES).map(([key, value]) => [key, cls(value)]))
+// The highlighted state is a class the component writes, and its only rule
+// targets the fill's `::before` layer — so it has no bare `.cls{` rule for the
+// lookup above to find. Resolve it by name wherever it appears, or the probe
+// would force a class that does not exist and measure a row that never lights
+// up (which is exactly the hole this probe is meant to catch).
+c.rowActive = css.match(/\.(\w+_rowActive)\b/)?.[1]
+  ?? (() => { throw new Error('the built stylesheet has no rowActive class') })()
 // The column class is only used by this probe to hold the rows, not by the
 // rules themselves — name it here so no real class is borrowed for a fake box.
 c.column = 'probe-column'
 
 const page = await chromium.launch({ channel: 'chrome' }).then(browser => browser.newPage({ viewport: { width: 900, height: 700 } }))
 
+/**
+ * The shell's own token values for the few custom properties these rules read.
+ * A bare probe page defines none of them, and an undefined custom property in a
+ * `background` declaration is invalid at computed-value time — the fill would
+ * read as `rgba(0, 0, 0, 0)` on a hovered row that really is painted, which is
+ * exactly the false negative this probe must not produce. Values are the dark
+ * theme's: `--dsw-alias-interactive-bg-hover` is the +8% white the shell's own
+ * sidebar rows use, and the radii are the shell's scale.
+ */
+const THEME = `:root{
+  --dsw-alias-interactive-bg-hover: rgba(255,255,255,.08);
+  --dsw-radius-md: 8px;
+  --dsw-radius-sm: 6px;
+  --dsw-radius-xs: 4px;
+  --dsh-workspace-indent: 0px;
+}`
+
 async function buildRow({ pinned, age, pending }) {
-  return page.evaluate(({ c, css, pinned, age, pending }) => {
+  return page.evaluate(({ c, css, pinned, age, pending, THEME }) => {
     const column = document.createElement('div')
     column.className = 'probe-column'
     column.style.cssText = 'width:344px;position:relative;overflow-x:auto;padding:0 0 0 0'
@@ -73,9 +106,10 @@ async function buildRow({ pinned, age, pending }) {
     })
     column.append(list)
     document.body.append(column)
+    document.head.insertAdjacentHTML('beforeend', `<style>${THEME}</style>`)
     document.head.insertAdjacentHTML('beforeend', `<style>${css}</style>`)
     return true
-  }, { c, css, pinned, age, pending })
+  }, { c, css, pinned, age, pending, THEME })
 }
 
 /** Force a row into the state the component's `.rowActive` class stands for. */
@@ -98,12 +132,19 @@ async function measure(label) {
       const row = document.querySelector(`#row-${index}`)
       const title = row.querySelector(`.${c.title}`)
       const trailing = row.querySelector(`.${c.trailing}`)
+      // The highlight is painted by the row's `::before`, so its used box is
+      // what carries the gutter: full height, 4px short of each inline end.
+      const layer = getComputedStyle(row, '::before')
       return {
         rowX: +row.getBoundingClientRect().x.toFixed(2),
         rowWidth: +row.getBoundingClientRect().width.toFixed(2),
         titleX: +title.getBoundingClientRect().x.toFixed(2),
         trailingX: +trailing.getBoundingClientRect().x.toFixed(2),
         trailingWidth: +trailing.getBoundingClientRect().width.toFixed(2),
+        layerLeft: layer.left,
+        layerRight: layer.right,
+        layerWidth: +parseFloat(layer.width).toFixed(2),
+        layerFill: layer.backgroundColor,
       }
     }
     const column = document.querySelector('.probe-column')
@@ -136,6 +177,14 @@ await page.screenshot({ path: `${outDir}/hover.png`, clip: { x: 0, y: 0, width: 
 await setActive(1, false)
 const after = await measure('pointer away again')
 
+// A real pointer hover, on top of the forced class: the `:hover` arm of the
+// fill rule is a separate selector from `.rowActive`, so forcing the class
+// alone would leave it unexercised.
+await page.hover('#row-1')
+const realHover = await measure('real pointer over the middle row')
+await page.mouse.move(880, 690)
+const realLeave = await measure('real pointer away again')
+
 // A silent-transition audit: no row-ish element may animate layout.
 const transitions = await page.evaluate(({ c }) => {
   const out = []
@@ -149,7 +198,7 @@ const transitions = await page.evaluate(({ c }) => {
 const report = {
   shippedCssFromBundle: true,
   hasChevronTransition,
-  before, hovered, after, transitions,
+  before, hovered, after, realHover, realLeave, transitions,
   verdict: {
     hoveredRowXUnchanged: hovered.hovered.rowX === before.hovered.rowX,
     hoveredRowWidthUnchanged: hovered.hovered.rowWidth === before.hovered.rowWidth,
@@ -160,6 +209,24 @@ const report = {
     trailingWidthConstant: hovered.hovered.trailingWidth === before.hovered.trailingWidth,
     returnsToRest: JSON.stringify(after.hovered) === JSON.stringify(before.hovered),
     noRowTransitions: transitions.length === 0,
+    // The gutter: the fill's layer is inset 4px at each end of the row, and its
+    // width is therefore the row minus both gutters. The fill only exists on the
+    // highlighted states — at rest the layer is transparent, which is what keeps
+    // the gutter from being permanent padding.
+    gutterInsetFourPxEachSide: hovered.hovered.layerLeft === '4px' && hovered.hovered.layerRight === '4px',
+    layerWidthIsRowMinusGutters: hovered.hovered.layerWidth === hovered.hovered.rowWidth - 8,
+    fillOnlyWhileHighlighted: before.hovered.layerFill === 'rgba(0, 0, 0, 0)'
+      && hovered.hovered.layerFill !== 'rgba(0, 0, 0, 0)',
+    // The same two facts under a real pointer, which is what the operator does:
+    // the fill lights up, and every geometric value stays put.
+    realHoverPaintsTheGutter: realHover.hovered.layerFill !== 'rgba(0, 0, 0, 0)'
+      && realHover.hovered.layerLeft === '4px' && realHover.hovered.layerRight === '4px',
+    realHoverMovesNothing: realHover.hovered.rowX === before.hovered.rowX
+      && realHover.hovered.rowWidth === before.hovered.rowWidth
+      && realHover.hovered.titleX === before.hovered.titleX
+      && realHover.hovered.trailingX === before.hovered.trailingX,
+    realLeaveReturnsToRest: realLeave.hovered.layerFill === 'rgba(0, 0, 0, 0)'
+      && realLeave.hovered.rowX === before.hovered.rowX && realLeave.hovered.layerWidth === before.hovered.layerWidth,
   },
 }
 

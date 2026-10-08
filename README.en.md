@@ -53,6 +53,12 @@ the column carries from the project tree into history.
   menu open. The cell is 74px wide in every state and only ever holds one of its
   three occupants, and the row carries no `transition` at all, so both arriving
   and leaving land in one step — nothing slides or hops under the cursor.
+- **The highlight stops short of the edges** — the fill is painted on a layer
+  inset 4px at each end of the row, so the row under the pointer reads as a card
+  with air around it rather than as a full-bleed band. Only that layer is inset,
+  never the row: a row is the layout box of its own text, so insetting the box
+  would step the title sideways and no dropped transition could undo it. Painting
+  the gutter into the layer is what lets the spacing and the stillness both hold.
 - **Hover card** — the shell's session card, element for element: full title,
   age, and the live-state line (running / waiting for approval / plan review /
   answer); clicking the card copies the title. One line is added: folder icon +
