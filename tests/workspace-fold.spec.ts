@@ -910,6 +910,42 @@ describe('the shell row slots', () => {
     dispose()
   })
 
+  it("expands the ungrouped bucket from the shell's bare `overflow:` row", () => {
+    // The trailing bucket's key is the empty string, so the shell addresses its
+    // overflow row as the bare `overflow:` — no key behind the prefix. A click
+    // on it used to be dropped as if the row carried no group at all, which
+    // left the strict fold holding every row past the limit out of sight no
+    // matter how often the row was clicked.
+    const container = mountSidebar(0)
+    const group = document.createElement('div')
+    group.className = 'bhn1Oq_groupSection'
+    const header = document.createElement('div')
+    header.className = 'YDXeBa_projectRow'
+    header.setAttribute('data-row-key', `workspace:${UNGROUPED_KEY}`)
+    header.textContent = '未分组'
+    group.append(inSlot(header))
+    for (let index = 0; index < 7; index++) {
+      const row = document.createElement('div')
+      row.className = 'YDXeBa_sessionRow'
+      row.setAttribute('data-row-key', `session:s${index}`)
+      row.textContent = `session ${index}`
+      group.append(inSlot(row))
+    }
+    const shellRow = document.createElement('button')
+    shellRow.setAttribute('data-row-key', `overflow:${UNGROUPED_KEY}`)
+    shellRow.textContent = '展开其余 2 个会话'
+    group.append(shellRow)
+    container.replaceChildren(group)
+
+    const { fold } = makeFold({ sessionRecency: id => recency[id] })
+    const dispose = fold.start()
+    expect(sessionRows(group).filter(row => rowSlot(group, row).style.display === 'none')).toHaveLength(2)
+
+    shellRow.click()
+    expect(sessionRows(group).every(row => rowSlot(group, row).style.display === '')).toBe(true)
+    dispose()
+  })
+
   it("keeps a nested group's rows out of the parent", () => {
     const { group } = mountSlottedGroup(2)
     const nested = document.createElement('div')

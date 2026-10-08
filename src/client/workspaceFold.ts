@@ -420,9 +420,12 @@ export class WorkspaceListFold {
   private readonly onDocumentClick = (event: MouseEvent): void => {
     const target = event.target instanceof Element ? event.target.closest(`[data-row-key^="${OVERFLOW_ROW_KEY}"]`) : null
     if (!(target instanceof HTMLElement)) return
-    const key = (target.getAttribute('data-row-key') ?? '').slice(OVERFLOW_ROW_KEY.length)
-    if (key === '') return
-    this.expandedGroups.add(key)
+    // The key behind `overflow:` may legitimately be empty: that is the trailing
+    // bucket's key ({@link UNGROUPED_KEY}), and the shell renders its overflow
+    // row as the bare `overflow:`. An empty key here is that bucket asking to
+    // unfold — dropping it left the bucket's held-back rows hidden behind the
+    // strict fold no matter how often the row was clicked.
+    this.expandedGroups.add((target.getAttribute('data-row-key') ?? '').slice(OVERFLOW_ROW_KEY.length))
     this.apply()
   }
 
