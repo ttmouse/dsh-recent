@@ -3,7 +3,10 @@
   "routine": "taskboard-claim-af2ddb6b-633",
   "profile": "headless",
   "cwd": "/Users/douba/Projects/dsh-recent",
-  "status": "running",
+  "status": "interrupted",
   "startedAt": 1791489595160,
-  "sessionId": "claim-af2ddb6b-cf8c247f"
+  "sessionId": "claim-af2ddb6b-cf8c247f",
+  "finishedAt": 1791490152009,
+  "durationMs": 556849,
+  "error": "interrupted: host restarted before the run finished"
 }
