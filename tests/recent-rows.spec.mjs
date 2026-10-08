@@ -139,4 +139,26 @@ describe('recent row hover geometry', () => {
     expect(actions).toMatch(/display:\s*inline-flex/)
     expect(css).not.toContain('rowMenuOpen')
   })
+
+  it('marks the session that is open right now, and does it without a hover', () => {
+    // The current row is a state of the *session*, not of the pointer: it has to
+    // be in the class list on its own, or the open conversation looks exactly
+    // like every other row as soon as the pointer moves away. An earlier round
+    // dropped it while reworking the active state, which left the row marked for
+    // assistive tech (`aria-selected`) and invisible to the eye.
+    const classList = tsx.match(/const rowClass = \[([^\]]*)\]/)?.[1]
+    expect(classList, 'the row class list must exist').toBeDefined()
+    expect(classList).toMatch(/css\.row\b/)
+    expect(classList, 'the open session needs its own class').toMatch(/row\.current\s*\?\s*css\.rowCurrent/)
+    expect(classList, 'and it must not be folded into the hover state').not.toMatch(/active\s*\?\s*css\.rowCurrent/)
+    expect(tsx).toMatch(/aria-selected=\{row\.current\}/)
+  })
+
+  it('paints the current row\'s fill on the same inset layer', () => {
+    // The two highlighted states have to look like each other and like the
+    // hover: same fill, same gutter, same radius — one rule, three selectors.
+    const fill = ruleBody('.row:hover::before,\n.rowActive::before,\n.rowCurrent::before')
+    expect(fill, 'the current row must share the hover fill rule').toBeDefined()
+    expect(fill).toMatch(/background:\s*var\(--dsw-alias-interactive-bg-hover\)/)
+  })
 })

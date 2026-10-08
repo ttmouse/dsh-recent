@@ -345,7 +345,14 @@ function RecentRowItem({ row, now, t, actions, onArchive, stale, onHover, showWo
   // row (or its menu is open) and the highlight follows the same flag.
   const [hovered, setHovered] = useState(false)
   const active = hovered || menuOpen
-  const rowClass = [css.row, active ? css.rowActive : '']
+  // Three states carry the fill, and they are independent: the pointer's row
+  // (`:hover`), the row whose menu is open (`.rowActive`, which the pointer may
+  // have left), and the row holding the session that is open right now
+  // (`.rowCurrent`). The current row is not a hover and must not be tied to one:
+  // it stays highlighted while the pointer is anywhere else, which is the whole
+  // point of marking it. Dropping it here is what once left the open session
+  // looking exactly like every other row.
+  const rowClass = [css.row, active ? css.rowActive : '', row.current ? css.rowCurrent : '']
     .filter(part => part !== '').join(' ')
   const pinLabel = row.pinned ? t('actions.unpin') : t('actions.pin')
   return (
