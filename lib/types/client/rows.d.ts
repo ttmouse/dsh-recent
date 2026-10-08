@@ -84,7 +84,7 @@ export interface RecentRowsInput {
 }
 /**
  * Derive the 最近 rows: every session that holds history, across all
- * workspaces, newest first. The list is complete — the section decides how much
+ * workspaces. Still-running sessions lead, then idle ones newest first. The list is complete — the section decides how much
  * of it to render at once, so scrolling can reach older sessions without the
  * derivation having thrown them away.
  * @param input - list, workspace registry, archive and pin sets, session status, and the localized ungrouped label.

@@ -169,12 +169,24 @@ describe('deriveRecentRows', () => {
     })
     expect(rows.map(row => [row.id, row.running, row.pending])).toEqual([
       ['running', true, undefined],
+      ['row-flag', true, undefined],
       ['waiting', false, 'question'],
       ['approval', false, 'approval'],
       ['hidden-kind', false, undefined],
-      ['row-flag', true, undefined],
       ['idle', false, undefined],
     ])
+  })
+
+  it('leads with still-running sessions even when their last entry is older', () => {
+    const list = listState([
+      // An idle session touched a minute ago, and one running for a long
+      // stretch whose log has not gained a durable entry since it started.
+      summary('idle-recent', { updatedAt: 60 }),
+      summary('long-runner', { updatedAt: 1, running: true }),
+      summary('idle-old', { updatedAt: 40 }),
+    ])
+    const rows = deriveRecentRows({ ...base, list })
+    expect(rows.map(row => row.id)).toEqual(['long-runner', 'idle-recent', 'idle-old'])
   })
 
   it('carries a plan review as its own pending kind', () => {
