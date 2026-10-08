@@ -19,7 +19,10 @@ This plugin adds the second view: every workspace's sessions sorted by
 activity, one click to open. A row is the workspace tree's session row, element
 for element — state dot, title, age (or the compact label of the interaction
 that waits), pin marker — and hovering it swaps the age and the marker for the
-row's actions (`…` menu / archive / pin), with the same session card floating
+row's actions (`…` menu / archive / pin) without moving the row: the pointer
+changes what the row shows (its fill, and the contents of a fixed-width trailing
+cell), never where the row or its title is. The swap lands in one step, because
+the row carries no transition at all, with the same session card floating
 beside it (full title, age, live state) plus one line the flat cross-project
 list cannot do without: folder icon + project name. The list does not fold:
 scrolling to the end of what is rendered loads older sessions, so one wheel over
@@ -43,6 +46,13 @@ the column carries from the project tree into history.
   is open) the age and the pin marker give way to that row's actions: the `…`
   menu (pin / fork / archive), archive, and pin, with the shell's own icons and
   spacing (16px buttons, 10px apart).
+- **Hovering moves nothing** — the pointer changes what a row *shows* (its fill,
+  and what sits in a fixed-width trailing cell), never *where* anything is: the
+  row's position and width, the title's inline start, and the trailing cell's
+  position and width are the same values at rest, on hover, and with the row's
+  menu open. The cell is 74px wide in every state and only ever holds one of its
+  three occupants, and the row carries no `transition` at all, so both arriving
+  and leaving land in one step — nothing slides or hops under the cursor.
 - **Hover card** — the shell's session card, element for element: full title,
   age, and the live-state line (running / waiting for approval / plan review /
   answer); clicking the card copies the title. One line is added: folder icon +
@@ -157,7 +167,11 @@ the committed `lib/` drifts from a fresh build.
   `ui-workspace`'s session row: the 16×20 state cell, the 14/20 title, the 10/16
   tertiary age, the pin marker, and the three 16px icon buttons the row swaps in
   on hover, with `--dsw-alias-interactive-bg-hover` for both the hovered row and
-  the current one. The card keeps the shell session card's elements and values
+  the current one. The trailing cell is the one thing measured rather than
+  copied: the shell's row lets it resize with what it holds (which is why a
+  hovered shell row pulls its own title sideways), so this section pins it at
+  74px and mounts exactly one occupant at a time — age, or pin marker, or the
+  actions. The card keeps the shell session card's elements and values
   (title / age / status line) and adds exactly one line, the project name, in the
   place that card reserves for extra content (the shell's
   `sidebar.session.row.hover` seat): after the age, before the status line, so

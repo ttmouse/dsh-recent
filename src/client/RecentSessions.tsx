@@ -384,74 +384,82 @@ function RecentRowItem({ row, now, t, actions, onArchive, stale, onHover, showWo
               {label !== undefined && <span className={css.visuallyHidden}>{label}</span>}
             </span>
             <span className={css.title}>{row.title}</span>
-            {/* The age and the pin marker give way to the actions while the row
-                is active — the swap lives in the markup, not in CSS, because
-                the controls on the other side of it are real buttons. */}
-            {!active && (
-              <span className={css.time} aria-hidden={row.pending === undefined ? undefined : true}>
-                {row.pending === undefined ? timeLabel(t, row.updatedAt, now) : t(PENDING[row.pending].compact)}
-              </span>
-            )}
-            {!active && row.pinned && (
-              <span className={css.pinIndicator} role="img" aria-label={t('row.pinned')} title={t('row.pinned')}>
-                <IconPinFillRegular size={14} />
-              </span>
-            )}
-            {active && (
-              <span className={css.rowActions} onClick={(event) => { event.stopPropagation() }}>
-                <Menu
-                  open={menuOpen}
-                  onClose={() => { setMenuOpen(false) }}
-                  portal
-                  closeOnPointerLeave
-                  anchor={
+            {/* The trailing cell is one fixed box in every state: it holds the
+                age, the pin marker the age makes room for, or the row's
+                actions, and none of the three is allowed to change its width
+                — a cell that appears or resizes on hover pulls the title
+                sideways under the cursor. The controls on the right side of
+                that swap are real buttons, so the swap itself lives in the
+                markup rather than in CSS: the actions mount with the hover,
+                and nothing sits in the document behind a `display` rule for a
+                keyboard to reach. */}
+            <span className={css.rowTrailing}>
+              {!active && (
+                <span className={css.time} aria-hidden={row.pending === undefined ? undefined : true}>
+                  {row.pending === undefined ? timeLabel(t, row.updatedAt, now) : t(PENDING[row.pending].compact)}
+                </span>
+              )}
+              {!active && row.pinned && (
+                <span className={css.pinIndicator} role="img" aria-label={t('row.pinned')} title={t('row.pinned')}>
+                  <IconPinFillRegular size={14} />
+                </span>
+              )}
+              {active && (
+                <span className={css.rowActions} onClick={(event) => { event.stopPropagation() }}>
+                  <Menu
+                    open={menuOpen}
+                    onClose={() => { setMenuOpen(false) }}
+                    portal
+                    closeOnPointerLeave
+                    anchor={
+                      <button
+                        type="button"
+                        className={css.iconButton}
+                        aria-label={t('actions.session.aria', { name: row.title })}
+                        onClick={() => { setMenuOpen(open => !open) }}
+                      >
+                        <IconEllipsisOutlineRegular />
+                      </button>
+                    }
+                    items={[
+                      {
+                        id: 'pin',
+                        label: t(row.pinned ? 'menu.unpinSession' : 'menu.pinSession'),
+                        icon: row.pinned ? <IconPinFillRegular /> : <IconPinOutlineRegular />,
+                      },
+                      { id: 'fork', label: t('menu.fork'), icon: <IconBranchOutlineRegular /> },
+                      { id: 'archive', label: t('menu.archiveSession'), icon: <IconArchiveOutlineRegular size={14} /> },
+                    ]}
+                    onSelect={(id) => {
+                      setMenuOpen(false)
+                      if (id === 'pin') (row.pinned ? actions.unpin : actions.pin)(row.id)
+                      else if (id === 'fork') actions.fork(row.id)
+                      else onArchive(row)
+                    }}
+                  />
+                  <Tooltip label={t('actions.archive')} side="bottom" align="end" delayMs={500}>
                     <button
                       type="button"
                       className={css.iconButton}
-                      aria-label={t('actions.session.aria', { name: row.title })}
-                      onClick={() => { setMenuOpen(open => !open) }}
+                      aria-label={t('actions.archive')}
+                      onClick={() => { onArchive(row) }}
                     >
-                      <IconEllipsisOutlineRegular />
+                      <IconArchiveOutlineRegular size={14} />
                     </button>
-                  }
-                  items={[
-                    {
-                      id: 'pin',
-                      label: t(row.pinned ? 'menu.unpinSession' : 'menu.pinSession'),
-                      icon: row.pinned ? <IconPinFillRegular /> : <IconPinOutlineRegular />,
-                    },
-                    { id: 'fork', label: t('menu.fork'), icon: <IconBranchOutlineRegular /> },
-                    { id: 'archive', label: t('menu.archiveSession'), icon: <IconArchiveOutlineRegular size={14} /> },
-                  ]}
-                  onSelect={(id) => {
-                    setMenuOpen(false)
-                    if (id === 'pin') (row.pinned ? actions.unpin : actions.pin)(row.id)
-                    else if (id === 'fork') actions.fork(row.id)
-                    else onArchive(row)
-                  }}
-                />
-                <Tooltip label={t('actions.archive')} side="bottom" align="end" delayMs={500}>
-                  <button
-                    type="button"
-                    className={css.iconButton}
-                    aria-label={t('actions.archive')}
-                    onClick={() => { onArchive(row) }}
-                  >
-                    <IconArchiveOutlineRegular size={14} />
-                  </button>
-                </Tooltip>
-                <Tooltip label={pinLabel} side="bottom" align="end" delayMs={500}>
-                  <button
-                    type="button"
-                    className={css.iconButton}
-                    aria-label={pinLabel}
-                    onClick={() => { (row.pinned ? actions.unpin : actions.pin)(row.id) }}
-                  >
-                    {row.pinned ? <IconPinFillRegular size={14} /> : <IconPinOutlineRegular size={14} />}
-                  </button>
-                </Tooltip>
-              </span>
-            )}
+                  </Tooltip>
+                  <Tooltip label={pinLabel} side="bottom" align="end" delayMs={500}>
+                    <button
+                      type="button"
+                      className={css.iconButton}
+                      aria-label={pinLabel}
+                      onClick={() => { (row.pinned ? actions.unpin : actions.pin)(row.id) }}
+                    >
+                      {row.pinned ? <IconPinFillRegular size={14} /> : <IconPinOutlineRegular size={14} />}
+                    </button>
+                  </Tooltip>
+                </span>
+              )}
+            </span>
             {showWorkspace && <span className={css.workspace}>{row.workspace}</span>}
           </div>
         }

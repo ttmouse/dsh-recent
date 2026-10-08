@@ -129,18 +129,18 @@
    rows. The highlight is the shell's too: the box the pointer is on and the row
    holding the current session paint the same fill.
 
-   A row takes the highlight as a *floating card*, not as a full-bleed bar: it
-   shrinks 4px on each side while it is the one the pointer is on, so the fill
-   ends inside the column and the resting rows around it show the gaps that make
-   the hovered row read as a card laid over the list. The resting rows keep the
-   full width, which is what holds the column's text at one inline start: the
-   inset is the hovered row's alone.
+   The highlight is the shell's full-bleed bar, not a floating card: a row is
+   the same box the pointer is on, at the same width, in every state, so
+   nothing about the row's box or its contents may move on hover. The earlier
+   inset (4px of margin on each side of the pointer's row) was exactly that
+   movement: the fill's edge slid and the title stepped sideways the moment the
+   pointer arrived, and because the box is the layout of the text inside it, no
+   amount of dropping the transition removes the jump — it only removes the
+   slide *between* the two positions. What the pointer changes here is the
+   fill and the trailing cell; the box stays put.
 
-   The inset is spacing and nothing more: the row carries no transition here, so
-   the gutter is simply there the moment the pointer arrives and gone the moment
-   it leaves. Animating it would make the row slide sideways under the cursor on
-   every hover — movement the operator never asked for, on the one control they
-   are about to click. */
+   The resting rows are full width for the same reason: it is what holds the
+   column's text at one inline start, hovered or not. */
 .row {
   box-sizing: border-box;
   display: flex;
@@ -161,30 +161,20 @@
 }
 
 .row:hover,
-.rowActive,
 .rowCurrent {
   background: var(--dsw-alias-interactive-bg-hover);
 }
 
-/* The pointer's row (and the one whose menu is open): the card leaves a 4px
-   gutter on both sides. Written inline by the row itself rather than as
-   `:hover` — the highlight and the row's actions are one state, and the row
-   already knows it, so the two can never disagree.
-
-   The width drop is what keeps the gutter *inside* the column. `width: 100%`
-   resolves against the containing block, so a 100%-wide row that then grows a
-   4px margin on each side ends up 8px wider than its column: it shifts right by
-   the leading margin and spills the trailing one past the column edge, which
-   the sidebar answers with a horizontal scrollbar. Letting the active row size
-   itself with the margins present makes the two gutters shrink the box rather
-   than push it — the fill sits 4px in from each edge and the row claims no more
-   room than any other.
-
-   The inset itself lands in one step, with no transition — see `.row`. */
+/* The pointer's row (and the one whose menu is open): the same box as every
+   other row. This class used to carry the 4px inset, which is the movement
+   that had to go; it is kept as the frame the row's *appearance* hangs on —
+   the fill, the trailing cell, and the row's shadow — so the highlight and
+   the row's actions cannot disagree, and the rule here is the one place that
+   documents the class. Keep it box-free: no margin, no width, no transition,
+   nothing the browser lays out. The row's contents are already fixed at every
+   state by {@link .slot}, {@link .rowActions} and {@link .rowActionsSpacer}. */
 .rowActive {
-  width: auto;
-  margin-left: 4px;
-  margin-right: 4px;
+  background: var(--dsw-alias-interactive-bg-hover);
 }
 
 /* Two-line mode: with the project-name line on, the row grows the way the
@@ -259,9 +249,33 @@
   color: var(--dsw-alias-label-caption);
 }
 
+/* The row's trailing cell is one fixed box, whatever it is showing: the age
+   in the resting state, the pin marker the age makes room for, or the row's
+   actions while the pointer is on the row. Nothing about it may depend on
+   which of the three is mounted — a cell that only exists on hover, or exists
+   on hover with a different width, yanks the title sideways under the cursor
+   (the row is a flex line and the title is the item that gives). Hence the
+   constant 74px: 44 for the age ("24分钟" at 10px, ~34px, plus the slack a
+   longer label needs), then the pin marker's 6px gap and 16px cell, then the
+   6px gap and the actions' 2x16px + 10px. The three states are mutually
+   exclusive in the markup, so the row never holds more than one of them. */
+.rowTrailing {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  width: 74px;
+  height: 20px;
+}
+
 /* The row's actions: mounted only while the row is the pointer's own (or its
-   menu is open), holding the place the age and the pin marker give up. The
-   resting state has no hidden copies in the document — see `.rowActive`. */
+   menu is open), holding the place the age and the pin marker give up inside
+   {@link .rowTrailing} — a box whose width does not change with them. The
+   resting state has no hidden copies in the document: these buttons are
+   rendered by React with the hover, not parked here behind a `display` rule,
+   which is what keeps a keyboard or the accessibility tree from reaching
+   controls the row is not currently offering. */
 .rowActions {
   flex: none;
   display: inline-flex;
