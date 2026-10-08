@@ -343,9 +343,20 @@ function RecentRowItem({ row, now, t, actions, onArchive, stale, onHover, showWo
             role="treeitem"
             tabIndex={0}
             data-workspace={showWorkspace ? '' : undefined}
+            data-row-key={`session:${row.id}`}
             aria-label={t('row.open', { name: row.title })}
             aria-selected={row.current}
             onClick={() => { actions.open(row.id) }}
+            draggable
+            onDragStart={(event) => {
+              // Same contract as ui-workspace's SessionNodeItem: a native drag
+              // source whose text/plain payload is the bare session id, so
+              // dsh-drag (and anything reading the official rows' payload)
+              // picks this row up without knowing this list exists. `move`
+              // matches the official rows; the drop side widens to copyMove.
+              event.dataTransfer.effectAllowed = 'move'
+              event.dataTransfer.setData('text/plain', row.id)
+            }}
             onKeyDown={(event) => {
               if (event.key !== 'Enter' && event.key !== ' ') return
               event.preventDefault()
