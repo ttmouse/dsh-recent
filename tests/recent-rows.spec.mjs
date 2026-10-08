@@ -43,6 +43,14 @@ describe('recent row hover geometry', () => {
     expect(body).toMatch(/margin-right:\s*4px/)
   })
 
+  it('keeps the gutter inside the column instead of letting the margins overflow it', () => {
+    // `width: 100%` + margins is 8px wider than the column: the row shifts right
+    // and spills past the trailing edge, which the sidebar answers with a
+    // horizontal scrollbar. The active row must therefore let the margins size
+    // it — an explicit width here is exactly the bug.
+    expect(ruleBody(ACTIVE)).toMatch(/width:\s*auto/)
+  })
+
   it('keeps the resting row full width and flush, so the column\'s text stays on one line', () => {
     const body = ruleBody('.row')
     expect(body).toBeDefined()
@@ -61,8 +69,13 @@ describe('recent row hover geometry', () => {
     expect(css).not.toMatch(/\.row:hover\s*\{[^}]*margin-(left|right)/)
   })
 
-  it('eases the gutter so a sweep down the list does not snap', () => {
-    expect(ruleBody('.row')).toMatch(/transition:\s*margin\s/)
+  it('shows the gutter in one step, with no transition on the row', () => {
+    // The gutter is spacing, not motion: the operator asked for the gap, not
+    // for the row to slide sideways under the cursor on every hover. The row
+    // must not carry a transition, and in particular none on `margin` or `all`.
+    const row = ruleBody('.row')
+    expect(row).not.toMatch(/transition/)
+    expect(row).not.toMatch(/\ball\b[a-z-]*\s*:/)
   })
 
   it('holds the row\'s actions only in the active state', () => {

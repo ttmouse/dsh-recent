@@ -134,7 +134,13 @@
    ends inside the column and the resting rows around it show the gaps that make
    the hovered row read as a card laid over the list. The resting rows keep the
    full width, which is what holds the column's text at one inline start: the
-   inset is the hovered row's alone. */
+   inset is the hovered row's alone.
+
+   The inset is spacing and nothing more: the row carries no transition here, so
+   the gutter is simply there the moment the pointer arrives and gone the moment
+   it leaves. Animating it would make the row slide sideways under the cursor on
+   every hover — movement the operator never asked for, on the one control they
+   are about to click. */
 .row {
   box-sizing: border-box;
   display: flex;
@@ -152,7 +158,6 @@
   line-height: 20px;
   cursor: pointer;
   user-select: none;
-  transition: margin 120ms var(--ds-ease-in-out);
 }
 
 .row:hover,
@@ -164,9 +169,20 @@
 /* The pointer's row (and the one whose menu is open): the card leaves a 4px
    gutter on both sides. Written inline by the row itself rather than as
    `:hover` — the highlight and the row's actions are one state, and the row
-   already knows it, so the two can never disagree. The horizontal margin and
-   the row's own `width: 100%` cancel out, so nothing in the column shifts. */
+   already knows it, so the two can never disagree.
+
+   The width drop is what keeps the gutter *inside* the column. `width: 100%`
+   resolves against the containing block, so a 100%-wide row that then grows a
+   4px margin on each side ends up 8px wider than its column: it shifts right by
+   the leading margin and spills the trailing one past the column edge, which
+   the sidebar answers with a horizontal scrollbar. Letting the active row size
+   itself with the margins present makes the two gutters shrink the box rather
+   than push it — the fill sits 4px in from each edge and the row claims no more
+   room than any other.
+
+   The inset itself lands in one step, with no transition — see `.row`. */
 .rowActive {
+  width: auto;
   margin-left: 4px;
   margin-right: 4px;
 }
