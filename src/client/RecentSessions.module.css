@@ -126,8 +126,15 @@
 /* One session row: the shell's own session-row metrics (32px tall, no gap, 8px
    inline start plus the workspace indent variable, medium radius) so the
    workspace tree above and the recent list below are one column of identical
-   rows. The highlight is the shell's too: the row a pointer rests on and the
-   row holding the current session paint the same fill. */
+   rows. The highlight is the shell's too: the box the pointer is on and the row
+   holding the current session paint the same fill.
+
+   A row takes the highlight as a *floating card*, not as a full-bleed bar: it
+   shrinks 4px on each side while it is the one the pointer is on, so the fill
+   ends inside the column and the resting rows around it show the gaps that make
+   the hovered row read as a card laid over the list. The resting rows keep the
+   full width, which is what holds the column's text at one inline start: the
+   inset is the hovered row's alone. */
 .row {
   box-sizing: border-box;
   display: flex;
@@ -145,12 +152,23 @@
   line-height: 20px;
   cursor: pointer;
   user-select: none;
+  transition: margin 120ms var(--ds-ease-in-out);
 }
 
 .row:hover,
-.rowCurrent,
-.rowMenuOpen {
+.rowActive,
+.rowCurrent {
   background: var(--dsw-alias-interactive-bg-hover);
+}
+
+/* The pointer's row (and the one whose menu is open): the card leaves a 4px
+   gutter on both sides. Written inline by the row itself rather than as
+   `:hover` — the highlight and the row's actions are one state, and the row
+   already knows it, so the two can never disagree. The horizontal margin and
+   the row's own `width: 100%` cancel out, so nothing in the column shifts. */
+.rowActive {
+  margin-left: 4px;
+  margin-right: 4px;
 }
 
 /* Two-line mode: with the project-name line on, the row grows the way the
@@ -225,26 +243,14 @@
   color: var(--dsw-alias-label-caption);
 }
 
-/* The row's actions: hidden at rest, revealed while the pointer is on the row
-   or its menu is open — and then they hold the space the age and the pin marker
-   give up, exactly as the shell's rows swap them. */
+/* The row's actions: mounted only while the row is the pointer's own (or its
+   menu is open), holding the place the age and the pin marker give up. The
+   resting state has no hidden copies in the document — see `.rowActive`. */
 .rowActions {
   flex: none;
-  display: none;
+  display: inline-flex;
   align-items: center;
   gap: 10px;
-}
-
-.row:hover .rowActions,
-.rowMenuOpen .rowActions {
-  display: inline-flex;
-}
-
-.row:hover .time,
-.rowMenuOpen .time,
-.row:hover .pinIndicator,
-.rowMenuOpen .pinIndicator {
-  display: none;
 }
 
 /* One 16px action glyph: the shell's own icon button, colors included. */

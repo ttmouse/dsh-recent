@@ -295,9 +295,13 @@ function ViewOptionsMenu({ showWorkspace, onToggleWorkspace, t }: {
  * One session row: the shell's own session row — leading state cell, title, the
  * age (or the waiting interaction's compact label), the resting pin marker —
  * with the age's place taken by the row's actions while the row is hovered or
- * its menu is open, exactly as the shell's rows do. The workspace/age card
- * rides on hover, and the card clicks through to copying the title, the same
- * affordance the workspace tree's session card gives.
+ * its menu is open, exactly as the shell's rows do. The actions really do take
+ * the age's place in the markup, rather than sitting under it in the document
+ * behind a `display` rule: the controls the row offers and the box it paints
+ * them in are the pointer's, so a sweep down the list mounts one row's actions
+ * and unmounts the last one's instead of leaving them all in the column. The
+ * workspace/age card rides on hover, and the card clicks through to copying the
+ * title, the same affordance the workspace tree's session card gives.
  *
  * The row reports its own hover up to the section ({@link onHover}), which is
  * what lets a card the pointer has left be hidden while the primitive still
@@ -331,7 +335,17 @@ function RecentRowItem({ row, now, t, actions, onArchive, stale, onHover, showWo
   const state = rowState(row)
   const label = statusLabel(row, t)
   const [menuOpen, setMenuOpen] = useState(false)
-  const rowClass = [css.row, row.current ? css.rowCurrent : '', menuOpen ? css.rowMenuOpen : '']
+  // The row's interactions — the actions that appear in place of the age, and
+  // the box they paint in — are the pointer's, exactly as the shell's own rows
+  // have them: they mount with the hover, not with the row. The highlight is a
+  // CSS `:hover` fill that no markup can mismatch; these controls cannot be
+  // written in CSS at all. Keeping them in the document at rest would let a
+  // keyboard Tab or an accessibility tree reach buttons the row is not
+  // currently offering, so they are rendered only while the pointer is on the
+  // row (or its menu is open) and the highlight follows the same flag.
+  const [hovered, setHovered] = useState(false)
+  const active = hovered || menuOpen
+  const rowClass = [css.row, active ? css.rowActive : '']
     .filter(part => part !== '').join(' ')
   const pinLabel = row.pinned ? t('actions.unpin') : t('actions.pin')
   return (
@@ -347,6 +361,8 @@ function RecentRowItem({ row, now, t, actions, onArchive, stale, onHover, showWo
             aria-label={t('row.open', { name: row.title })}
             aria-selected={row.current}
             onClick={() => { actions.open(row.id) }}
+            onPointerEnter={() => { setHovered(true) }}
+            onPointerLeave={() => { setHovered(false) }}
             draggable
             onDragStart={(event) => {
               // Same contract as ui-workspace's SessionNodeItem: a native drag
@@ -368,67 +384,74 @@ function RecentRowItem({ row, now, t, actions, onArchive, stale, onHover, showWo
               {label !== undefined && <span className={css.visuallyHidden}>{label}</span>}
             </span>
             <span className={css.title}>{row.title}</span>
-            <span className={css.time} aria-hidden={row.pending === undefined ? undefined : true}>
-              {row.pending === undefined ? timeLabel(t, row.updatedAt, now) : t(PENDING[row.pending].compact)}
-            </span>
-            {row.pinned && (
+            {/* The age and the pin marker give way to the actions while the row
+                is active — the swap lives in the markup, not in CSS, because
+                the controls on the other side of it are real buttons. */}
+            {!active && (
+              <span className={css.time} aria-hidden={row.pending === undefined ? undefined : true}>
+                {row.pending === undefined ? timeLabel(t, row.updatedAt, now) : t(PENDING[row.pending].compact)}
+              </span>
+            )}
+            {!active && row.pinned && (
               <span className={css.pinIndicator} role="img" aria-label={t('row.pinned')} title={t('row.pinned')}>
                 <IconPinFillRegular size={14} />
               </span>
             )}
-            <span className={css.rowActions} onClick={(event) => { event.stopPropagation() }}>
-              <Menu
-                open={menuOpen}
-                onClose={() => { setMenuOpen(false) }}
-                portal
-                closeOnPointerLeave
-                anchor={
+            {active && (
+              <span className={css.rowActions} onClick={(event) => { event.stopPropagation() }}>
+                <Menu
+                  open={menuOpen}
+                  onClose={() => { setMenuOpen(false) }}
+                  portal
+                  closeOnPointerLeave
+                  anchor={
+                    <button
+                      type="button"
+                      className={css.iconButton}
+                      aria-label={t('actions.session.aria', { name: row.title })}
+                      onClick={() => { setMenuOpen(open => !open) }}
+                    >
+                      <IconEllipsisOutlineRegular />
+                    </button>
+                  }
+                  items={[
+                    {
+                      id: 'pin',
+                      label: t(row.pinned ? 'menu.unpinSession' : 'menu.pinSession'),
+                      icon: row.pinned ? <IconPinFillRegular /> : <IconPinOutlineRegular />,
+                    },
+                    { id: 'fork', label: t('menu.fork'), icon: <IconBranchOutlineRegular /> },
+                    { id: 'archive', label: t('menu.archiveSession'), icon: <IconArchiveOutlineRegular size={14} /> },
+                  ]}
+                  onSelect={(id) => {
+                    setMenuOpen(false)
+                    if (id === 'pin') (row.pinned ? actions.unpin : actions.pin)(row.id)
+                    else if (id === 'fork') actions.fork(row.id)
+                    else onArchive(row)
+                  }}
+                />
+                <Tooltip label={t('actions.archive')} side="bottom" align="end" delayMs={500}>
                   <button
                     type="button"
                     className={css.iconButton}
-                    aria-label={t('actions.session.aria', { name: row.title })}
-                    onClick={() => { setMenuOpen(open => !open) }}
+                    aria-label={t('actions.archive')}
+                    onClick={() => { onArchive(row) }}
                   >
-                    <IconEllipsisOutlineRegular />
+                    <IconArchiveOutlineRegular size={14} />
                   </button>
-                }
-                items={[
-                  {
-                    id: 'pin',
-                    label: t(row.pinned ? 'menu.unpinSession' : 'menu.pinSession'),
-                    icon: row.pinned ? <IconPinFillRegular /> : <IconPinOutlineRegular />,
-                  },
-                  { id: 'fork', label: t('menu.fork'), icon: <IconBranchOutlineRegular /> },
-                  { id: 'archive', label: t('menu.archiveSession'), icon: <IconArchiveOutlineRegular size={14} /> },
-                ]}
-                onSelect={(id) => {
-                  setMenuOpen(false)
-                  if (id === 'pin') (row.pinned ? actions.unpin : actions.pin)(row.id)
-                  else if (id === 'fork') actions.fork(row.id)
-                  else onArchive(row)
-                }}
-              />
-              <Tooltip label={t('actions.archive')} side="bottom" align="end" delayMs={500}>
-                <button
-                  type="button"
-                  className={css.iconButton}
-                  aria-label={t('actions.archive')}
-                  onClick={() => { onArchive(row) }}
-                >
-                  <IconArchiveOutlineRegular size={14} />
-                </button>
-              </Tooltip>
-              <Tooltip label={pinLabel} side="bottom" align="end" delayMs={500}>
-                <button
-                  type="button"
-                  className={css.iconButton}
-                  aria-label={pinLabel}
-                  onClick={() => { (row.pinned ? actions.unpin : actions.pin)(row.id) }}
-                >
-                  {row.pinned ? <IconPinFillRegular size={14} /> : <IconPinOutlineRegular size={14} />}
-                </button>
-              </Tooltip>
-            </span>
+                </Tooltip>
+                <Tooltip label={pinLabel} side="bottom" align="end" delayMs={500}>
+                  <button
+                    type="button"
+                    className={css.iconButton}
+                    aria-label={pinLabel}
+                    onClick={() => { (row.pinned ? actions.unpin : actions.pin)(row.id) }}
+                  >
+                    {row.pinned ? <IconPinFillRegular size={14} /> : <IconPinOutlineRegular size={14} />}
+                  </button>
+                </Tooltip>
+              </span>
+            )}
             {showWorkspace && <span className={css.workspace}>{row.workspace}</span>}
           </div>
         }
